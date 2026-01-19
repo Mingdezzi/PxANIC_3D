@@ -17,13 +17,9 @@ from entities.player_logic.actions import ActionLogic
 from entities.player_logic.inventory import InventoryLogic
 
 class Player(Entity):
-    def __init__(self, x, y, map_data, map_width, map_height, zone_map, name="Player", role="CITIZEN", map_manager=None, game=None):
-        
-        super().__init__(x, y, map_data, map_width, map_height, zone_map, name, role, map_manager)
-        
-        self.game = game  # [추가] game 객체 저장
-        
-        self.logger = GameLogger.get_instance() # [수정] game 객체로부터 logger를 가져오지 않고 직접 인스턴스 가져오기 (GameLogger는 싱글턴)
+    def __init__(self, x, y, width, height, map_data, zone_map, map_manager=None):
+        super().__init__(x, y, map_data, map_width=width, map_height=height, zone_map=zone_map, name="Player", role="CITIZEN", map_manager=map_manager)
+        self.logger = GameLogger.get_instance()
         self.start_x = float(self.rect.x); self.start_y = float(self.rect.y)
         
         self.color = COLORS['CLOTHES']
@@ -39,7 +35,7 @@ class Player(Entity):
         self.bullets_fired_today = 0; self.day_count = 0; self.exhausted = False; self.exhaust_timer = 0
         self.doors_to_close = []; self.current_phase_ref = "MORNING"
         self.custom = {'skin': 0, 'clothes': 0, 'hat': 0}
-        self.move_state = "WALK"; self.facing_dir = (0, 1); self.z_level = 0; self.interaction_hold_timer = 0; self.e_key_pressed = False
+        self.move_state = "WALK"; self.facing_dir = (0, 1); self.interaction_hold_timer = 0; self.e_key_pressed = False
         
         # [Logic Components]
         self.logic_move = MovementLogic(self)
@@ -66,7 +62,6 @@ class Player(Entity):
         self.daily_work_count = 0; self.work_step = 0; self.bullets_fired_today = 0
         self.day_count = 0; self.exhausted = False; self.hidden_in_solid = False
         self.emotions = {}; self.move_state = "WALK"; self.device_battery = 100.0; self.infinite_stamina_buff = False; self.powerbank_uses = 0
-        self.z_level = 0 # [추가]
 
     def change_role(self, new_role, sub_role=None):
         if new_role in ["FARMER", "MINER", "FISHER"]:
@@ -120,7 +115,7 @@ class Player(Entity):
                 return "Battery Empty!"
         return "Device unavailable for this role."
 
-    def update(self, dt, phase, npcs, is_blackout, weather_type='CLEAR'):
+    def update(self, phase, npcs, is_blackout, weather_type='CLEAR'):
         self.current_phase_ref = phase
         self.weather = weather_type 
         if not self.alive: return []
@@ -133,7 +128,7 @@ class Player(Entity):
         
         is_moving = self._handle_movement_input()
         
-        sound_events = self._update_devices_and_battery(now, dt)
+        sound_events = self._update_devices_and_battery(now)
         
         self._update_stamina(is_moving)
         
@@ -142,8 +137,8 @@ class Player(Entity):
         self._update_special_states(now)
 
         # Interaction Input
-        input_h = self.game.input_handler
-        if input_h.is_key_pressed(pygame.K_e):
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_e]:
             if not self.e_key_pressed: 
                 self.e_key_pressed = True
                 self.interaction_hold_timer = now
@@ -217,10 +212,10 @@ class Player(Entity):
         return self.logic_inventory.buy_item(item_key)
 
     # [Internal Helpers - Kept in Player as they modify simple state directly or are small]
-    def _update_devices_and_battery(self, now, dt):
+    def _update_devices_and_battery(self, now):
         sound_events = []
         if self.device_on:
-            self.device_battery -= 3.0 * dt # 초당 3.0% 감소
+            self.device_battery -= 0.05
             if self.device_battery <= 0: self.device_battery, self.device_on = 0, False; self.add_popup("Battery Depleted!", (255, 50, 50))
             if self.role in ["CITIZEN", "DOCTOR"] and now % 2000 < 50: sound_events.append(("BEEP", self.rect.centerx, self.rect.centery, 4 * TILE_SIZE))
         return sound_events

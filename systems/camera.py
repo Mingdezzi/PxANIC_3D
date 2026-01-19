@@ -64,21 +64,43 @@ class Camera:
         # 타겟을 화면 중앙에 위치시키기 위한 카메라의 좌상단 좌표 계산
         x = target_x - self.view_w / 2
         y = target_y - self.view_h / 2
-
+        
         # 맵 경계 제한 (Clamp)
+        x, y = self._clamp(x, y)
+
+        self.camera_x = x
+        self.camera_y = y
+
+    def smooth_update(self, target_x, target_y, dt, speed=5.0):
+        # 1. 목표 위치 계산
+        target_cam_x = target_x - self.view_w / 2
+        target_cam_y = target_y - self.view_h / 2
+        
+        # 2. 맵 경계 제한 (목표 위치 자체를 제한)
+        target_cam_x, target_cam_y = self._clamp(target_cam_x, target_cam_y)
+        
+        # 3. Lerp 적용
+        # dt * speed가 1.0을 넘으면 overshoot 할 수 있으므로 min 사용 가능하지만, 
+        # 일반적인 프레임레이트에서는 괜찮음. 
+        # 부드러움을 위해 speed 조절 (기본 5.0 ~ 10.0)
+        self.camera_x += (target_cam_x - self.camera_x) * speed * dt
+        self.camera_y += (target_cam_y - self.camera_y) * speed * dt
+        
+        # 작은 오차로 떨림 방지 (선택 사항)
+        if abs(self.camera_x - target_cam_x) < 0.5: self.camera_x = target_cam_x
+        if abs(self.camera_y - target_cam_y) < 0.5: self.camera_y = target_cam_y
+
+    def _clamp(self, x, y):
         # 가로축
         if self.map_width_px > self.view_w:
             x = max(0, min(x, self.map_width_px - self.view_w))
         else:
-            # 맵이 화면보다 작으면 중앙 정렬
             x = -(self.view_w - self.map_width_px) / 2
 
         # 세로축
         if self.map_height_px > self.view_h:
             y = max(0, min(y, self.map_height_px - self.view_h))
         else:
-            # 맵이 화면보다 작으면 중앙 정렬
             y = -(self.view_h - self.map_height_px) / 2
-
-        self.camera_x = x
-        self.camera_y = y
+            
+        return x, y

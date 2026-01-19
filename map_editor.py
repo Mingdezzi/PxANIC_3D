@@ -1,392 +1,567 @@
 import pygame
+import json
 import sys
 import os
-import math
-# settings의 SCREEN_WIDTH/HEIGHT는 게임용이므로 무시하고 동적으로 처리합니다.
-from settings import TILE_SIZE, BLOCK_HEIGHT
-from world.map_manager import MapManager
-from world.tiles import get_texture, TILE_DATA
+import tkinter as tk
+from tkinter import messagebox, filedialog
+from settings import TILE_SIZE, FPS, ZONES
+from colors import COLORS
+from world.tiles import TILE_DATA, create_texture, get_tile_category, check_collision, get_tile_function, NEW_ID_MAP, get_tile_type, get_tile_interaction, get_tile_hiding
 
-# --- 색상 상수 ---
-C_BG = (30, 32, 36)
-C_GRID = (255, 255, 255, 40)
-C_UI_BG = (45, 48, 55)
-C_UI_BORDER = (80, 80, 90)
-C_TEXT = (220, 220, 220)
-C_HIGHLIGHT = (255, 200, 0)
-C_ACTIVE_TAB = (70, 130, 180)
+UI_WIDTH = 340
+MINIMAP_SIZE_BASE = 250
+CAMERA_PADDING = 50
 
 class MapEditor:
     def __init__(self):
         pygame.init()
-        
-        # [수정 1] 모니터 해상도 기반 안전한 초기 크기 설정
+        self.root = tk.Tk(); self.root.withdraw()
+
         info = pygame.display.Info()
-        monitor_w, monitor_h = info.current_w, info.current_h
-        
-        # 모니터의 85% 크기로 설정 (단, 최소 1024x768 보장)
-        initial_w = max(1024, int(monitor_w * 0.85))
-        initial_h = max(768, int(monitor_h * 0.85))
-        
-        self.screen = pygame.display.set_mode((initial_w, initial_h), pygame.RESIZABLE)
-        pygame.display.set_caption("PxANIC! 2.5D Builder")
+        self.screen_width = int(info.current_w * 0.9)
+        self.screen_height = int(info.current_h * 0.9)
+
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
+        pygame.display.set_caption("Pixel Night Map Editor - V9.8 (Deep Copy & Group Rotate)")
+
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont("malgungothic", 14) 
-        self.title_font = pygame.font.SysFont("malgungothic", 20, bold=True)
-        
-        # 맵 시스템
-        self.map_manager = MapManager()
-        self.load_map_safe()
-        
-        # 카메라 & 뷰
-        self.camera_x = -100
-        self.camera_y = -100
+
+        font_name = "malgungothic"
+        if font_name not in pygame.font.get_fonts(): font_name = "arial"
+        try:
+            self.font = pygame.font.SysFont(font_name, 14)
+            self.small_font = pygame.font.SysFont(font_name, 11)
+            self.title_font = pygame.font.SysFont(font_name, 40)
+        except:
+            self.font = pygame.font.Font(None, 18)
+            self.small_font = pygame.font.Font(None, 14)
+            self.title_font = pygame.font.Font(None, 50)
+
+
+        self.textures = {tid: create_texture(tid) for tid in TILE_DATA}
+        self.ui_textures = {tid: pygame.transform.scale(surf, (24, 24)) for tid, surf in self.textures.items()}
+
+
+        self.state = 'MENU'
+
+
+        self.init_empty_map(50, 50)
+        self.active_layer = 'floor'
+
+
+        self.input_width_str = "50"
+        self.input_height_str = "50"
+        self.input_active_field = 0
+        self.input_error_msg = ""
+
+
+        self.camera_x = 0
+        self.camera_y = 0
         self.zoom = 1.0
-        
-        # 편집 상태
-        self.current_z = 0
-        self.current_layer = 'floor' 
-        self.selected_tid = 1110000 
-        self.rotation = 0
-        
-        self.show_grid = True
+        self.min_zoom = 0.1
+        self.max_zoom = 3.0
+
+
+        self.tool_mode = 'BRUSH'
+        self.clipboard = None
+        self.mode = 'TILE'
+        self.current_rotation = 0
+
+        self.filters = {'A': None, 'B': None, 'C': None, 'D': None, 'E': None}
+        self.filtered_tiles = []
+        self.current_tile_idx = 0
+        self.selected_zone_id = 1
+        self.tile_list_scroll = 0
+
+        self.update_filtered_tiles()
+
+
         self.is_dragging = False
-        self.drag_button = 0 
-        
-        # UI 레이아웃
-        self.ui_width = 320
-        self.palette_scroll = 0
-        self.tiles_per_row = 7
-        self.tile_btn_size = 40
-        self.tile_btn_margin = 5
-        
-        # 타일 데이터 분류
-        self.categorized_tiles = {'floor': [], 'wall': [], 'object': []}
-        self._categorize_tiles()
+        self.is_erasing = False
+        self.drag_start_pos = (0, 0)
+        self.drag_current_pos = (0, 0)
 
-        # UI 버튼 리스트 (매 프레임 갱신)
-        self.ui_tile_buttons = []
-        self.ui_tab_buttons = []
 
-    def load_map_safe(self):
-        if os.path.exists("map.json"):
-            try:
-                self.map_manager.load_map("map.json")
-                print("Map loaded successfully.")
-            except Exception as e:
-                print(f"Failed to load map: {e}")
-                self.map_manager.create_default_map()
-        else:
-            self.map_manager.create_default_map()
+        self.ui_width = UI_WIDTH
+        self.minimap_size = min(MINIMAP_SIZE_BASE, self.screen_height - 100, self.ui_width - 30)
+        self.map_view_width = self.screen_width - self.ui_width
+        self.mm_draw_rect = pygame.Rect(0, 0, 0, 0)
+        self.ui_rects = {}
 
-    def _categorize_tiles(self):
-        for tid, data in TILE_DATA.items():
-            if 'img' not in data and not get_texture(tid): continue
-            
-            if 1000000 <= tid < 3000000:
-                self.categorized_tiles['floor'].append(tid)
-            elif 3000000 <= tid < 5000000:
-                self.categorized_tiles['wall'].append(tid)
-            else:
-                self.categorized_tiles['object'].append(tid)
-                
-        for k in self.categorized_tiles:
-            self.categorized_tiles[k].sort()
+        self.running = True
 
-    def run(self):
-        while True:
-            dt = self.clock.tick(60)
-            self.handle_events()
-            self.update_camera()
-            self.draw()
-            pygame.display.flip()
+    def init_empty_map(self, w, h):
+        self.map_width, self.map_height = w, h
+        self.layers = {
+            'floor': [[(1110000, 0) for _ in range(w)] for _ in range(h)],
+            'wall': [[(0, 0) for _ in range(w)] for _ in range(h)],
+            'object': [[(0, 0) for _ in range(w)] for _ in range(h)]
+        }
+        self.zone_map = [[0 for _ in range(w)] for _ in range(h)]
 
-    def handle_events(self):
-        keys = pygame.key.get_pressed()
-        ctrl = keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]
-        
-        # [수정 2] 현재 창 크기 가져오기
-        screen_w, screen_h = self.screen.get_size()
+    def update_filtered_tiles(self):
+        results = []
+        layer_cats = []
+        if self.active_layer == 'floor': layer_cats = [1, 2]
+        elif self.active_layer == 'wall': layer_cats = [3, 4]
+        elif self.active_layer == 'object': layer_cats = [5, 6, 7, 8, 9]
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.save_map()
-                pygame.quit()
-                sys.exit()
-            
-            elif event.type == pygame.VIDEORESIZE:
-                # 창 크기 변경 시 display 다시 설정
-                self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+        for tid in TILE_DATA.keys():
+            cat = get_tile_category(tid)
+            if cat not in layer_cats: continue
+            if self.filters['A'] is not None and cat != self.filters['A']: continue
+            if self.filters['B'] is not None and get_tile_type(tid) != self.filters['B']: continue
+            c_val = 2 if check_collision(tid) else 1
+            if self.filters['C'] is not None and c_val != self.filters['C']: continue
+            if self.filters['D'] is not None and get_tile_interaction(tid) != self.filters['D']: continue
+            if self.filters['E'] is not None and get_tile_hiding(tid) != self.filters['E']: continue
+            results.append(tid)
 
-            # --- 마우스 입력 ---
-            elif event.type == pygame.MOUSEWHEEL:
-                mx, my = pygame.mouse.get_pos()
-                # UI 영역 판정 (현재 화면 너비 기준)
-                if mx > screen_w - self.ui_width:
-                    self.palette_scroll = max(0, self.palette_scroll - event.y * 30)
-                else:
-                    if ctrl:
-                        self.change_layer(event.y)
+        results.sort()
+        self.filtered_tiles = results
+        self.current_tile_idx = 0
+        self.tile_list_scroll = 0
+
+    def get_selected_tile_id(self):
+        if not self.filtered_tiles: return 0
+        if self.current_tile_idx >= len(self.filtered_tiles): self.current_tile_idx = 0
+        return self.filtered_tiles[self.current_tile_idx]
+
+    def grid_to_screen(self, gx, gy):
+        return (gx * TILE_SIZE * self.zoom) - self.camera_x, (gy * TILE_SIZE * self.zoom) - self.camera_y
+
+    def screen_to_grid(self, sx, sy):
+        return int((sx + self.camera_x) / (TILE_SIZE * self.zoom)), int((sy + self.camera_y) / (TILE_SIZE * self.zoom))
+
+    def get_selection_rect(self):
+        x1, y1 = self.drag_start_pos; x2, y2 = self.drag_current_pos
+        return min(x1, x2), max(x1, x2), min(y1, y2), max(y1, y2)
+
+    def apply_fill(self):
+        if self.tool_mode == 'BRUSH':
+            sx, ex, sy, ey = self.get_selection_rect()
+            tid = self.get_selected_tile_id()
+            for y in range(sy, ey + 1):
+                for x in range(sx, ex + 1):
+                    if 0 <= x < self.map_width and 0 <= y < self.map_height:
+                        if self.mode == 'TILE':
+                            target_grid = self.layers[self.active_layer]
+                            if self.is_erasing:
+                                if self.active_layer == 'floor': target_grid[y][x] = (1110000, 0)
+                                else: target_grid[y][x] = (0, 0)
+                            else:
+                                if self.active_layer in ['wall', 'object']:
+                                    floor_tid = self.layers['floor'][y][x][0]
+                                    if floor_tid == 0: continue
+                                if self.active_layer == 'object' and get_tile_category(tid) == 5:
+                                    self.layers['wall'][y][x] = (0, 0)
+                                target_grid[y][x] = (tid, self.current_rotation)
+                        else:
+                            self.zone_map[y][x] = 0 if self.is_erasing else self.selected_zone_id
+
+        elif self.tool_mode == 'COPY':
+            sx, ex, sy, ey = self.get_selection_rect()
+            w, h = ex - sx + 1, ey - sy + 1
+
+
+            clipboard_data = {'floor': [], 'wall': [], 'object': [], 'zones': []}
+            for y in range(sy, ey + 1):
+                f_row, w_row, o_row, z_row = [], [], [], []
+                for x in range(sx, ex + 1):
+                    if 0 <= x < self.map_width and 0 <= y < self.map_height:
+                        f_row.append(self.layers['floor'][y][x])
+                        w_row.append(self.layers['wall'][y][x])
+                        o_row.append(self.layers['object'][y][x])
+                        z_row.append(self.zone_map[y][x])
                     else:
-                        self.zoom = max(0.5, min(3.0, self.zoom + event.y * 0.1))
+                        f_row.append((0,0)); w_row.append((0,0)); o_row.append((0,0)); z_row.append(0)
+                clipboard_data['floor'].append(f_row)
+                clipboard_data['wall'].append(w_row)
+                clipboard_data['object'].append(o_row)
+                clipboard_data['zones'].append(z_row)
+            self.clipboard = {'w': w, 'h': h, 'data': clipboard_data}
 
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                mx, my = pygame.mouse.get_pos()
-                
-                # UI 영역 클릭
-                if mx > screen_w - self.ui_width:
-                    self.handle_ui_click(mx, my)
-                # 맵 영역 클릭
-                else:
-                    if event.button == 1: 
-                        self.place_tile(mx, my)
-                        self.is_dragging = True
-                        self.drag_button = 1
-                    elif event.button == 3: 
-                        self.remove_tile(mx, my)
-                        self.is_dragging = True
-                        self.drag_button = 3
-                    elif event.button == 2:
-                        self.pick_tile(mx, my)
+    def rotate_clipboard(self):
+        """클립보드 내용을 90도 회전"""
+        if not self.clipboard: return
+        w, h = self.clipboard['w'], self.clipboard['h']
+        new_w, new_h = h, w
+        new_data = {'floor': [], 'wall': [], 'object': [], 'zones': []}
 
-            elif event.type == pygame.MOUSEBUTTONUP:
-                self.is_dragging = False
+        def rotate_grid(grid, is_tile=True):
+            new_grid = [[None for _ in range(new_w)] for _ in range(new_h)]
+            for y in range(h):
+                for x in range(w):
+                    nx, ny = h - 1 - y, x
+                    val = grid[y][x]
+                    if is_tile:
+                        tid, rot = val
+                        if tid != 0: new_grid[ny][nx] = (tid, (rot + 90) % 360)
+                        else: new_grid[ny][nx] = (0, 0)
+                    else:
+                        new_grid[ny][nx] = val
+            return new_grid
 
-            # --- 키보드 입력 ---
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_s and ctrl: self.save_map()
-                elif event.key == pygame.K_g: self.show_grid = not self.show_grid
-                elif event.key == pygame.K_r: self.rotation = (self.rotation + 90) % 360
-                elif event.key == pygame.K_PAGEUP: self.change_layer(1)
-                elif event.key == pygame.K_PAGEDOWN: self.change_layer(-1)
-                elif event.key == pygame.K_1: self.set_mode('floor')
-                elif event.key == pygame.K_2: self.set_mode('wall')
-                elif event.key == pygame.K_3: self.set_mode('object')
-                elif event.key == pygame.K_TAB:
-                    modes = ['floor', 'wall', 'object']
-                    idx = (modes.index(self.current_layer) + 1) % 3
-                    self.set_mode(modes[idx])
-                elif event.key == pygame.K_s and not ctrl:
-                    mx, my = pygame.mouse.get_pos()
-                    self.pick_tile(mx, my)
+        new_data['floor'] = rotate_grid(self.clipboard['data']['floor'])
+        new_data['wall'] = rotate_grid(self.clipboard['data']['wall'])
+        new_data['object'] = rotate_grid(self.clipboard['data']['object'])
+        new_data['zones'] = rotate_grid(self.clipboard['data']['zones'], is_tile=False)
 
-        # 드래그 처리
-        if self.is_dragging:
-            mx, my = pygame.mouse.get_pos()
-            # UI 영역 밖에서만 작동
-            if mx < screen_w - self.ui_width:
-                if self.drag_button == 1: self.place_tile(mx, my)
-                elif self.drag_button == 3: self.remove_tile(mx, my)
+        self.clipboard = {'w': new_w, 'h': new_h, 'data': new_data}
 
-    def update_camera(self):
-        keys = pygame.key.get_pressed()
-        speed = 15 / self.zoom
-        if keys[pygame.K_LSHIFT]: speed *= 2
-        
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]: self.camera_x -= speed
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]: self.camera_x += speed
-        if keys[pygame.K_UP] or keys[pygame.K_w]: self.camera_y -= speed
-        if keys[pygame.K_DOWN] or keys[pygame.K_s] and not (keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]): self.camera_y += speed
+    def apply_paste(self, gx, gy):
+        if not self.clipboard: return
+        w, h = self.clipboard['w'], self.clipboard['h']
+        for y in range(h):
+            for x in range(w):
+                mx, my = gx + x, gy + y
+                if 0 <= mx < self.map_width and 0 <= my < self.map_height:
+                    for layer in ['floor', 'wall', 'object']:
+                        val = self.clipboard['data'][layer][y][x]
 
-    # --- 기능 메서드 ---
-    def set_mode(self, mode):
-        self.current_layer = mode
-        self.palette_scroll = 0
-        tiles = self.categorized_tiles.get(mode, [])
-        if tiles: self.selected_tid = tiles[0]
+                        if val[0] != 0 or (layer == 'floor' and val[0] == 0):
+                            if val[0] != 0: self.layers[layer][my][mx] = val
 
-    def change_layer(self, delta):
-        self.current_z += int(delta)
-        if self.current_z < 0: self.current_z = 0
+                    z_val = self.clipboard['data']['zones'][y][x]
+                    if z_val != 0: self.zone_map[my][mx] = z_val
 
-    def screen_to_world(self, sx, sy):
-        wx = (sx / self.zoom) + self.camera_x
-        wy = (sy / self.zoom) + self.camera_y + (self.current_z * BLOCK_HEIGHT)
-        return int(wx // TILE_SIZE), int(wy // TILE_SIZE)
-
-    def place_tile(self, mx, my):
-        gx, gy = self.screen_to_world(mx, my)
-        self.map_manager.set_tile(gx, gy, self.selected_tid, z=self.current_z, rotation=self.rotation, layer=self.current_layer)
-
-    def remove_tile(self, mx, my):
-        gx, gy = self.screen_to_world(mx, my)
-        self.map_manager.set_tile(gx, gy, 0, z=self.current_z, layer=self.current_layer)
-
-    def pick_tile(self, mx, my):
-        gx, gy = self.screen_to_world(mx, my)
-        val = self.map_manager.get_tile_full(gx, gy, self.current_z, self.current_layer)
-        if val[0] != 0:
-            self.selected_tid = val[0]
-            self.rotation = val[1]
-            print(f"Picked Tile: {self.selected_tid}")
+    def clamp_camera(self):
+        mw, mh = self.map_width * TILE_SIZE * self.zoom, self.map_height * TILE_SIZE * self.zoom
+        if mw < self.map_view_width: self.camera_x = -(self.map_view_width - mw) / 2
+        else: self.camera_x = max(-CAMERA_PADDING, min(self.camera_x, mw - self.map_view_width + CAMERA_PADDING))
+        if mh < self.screen_height: self.camera_y = -(self.screen_height - mh) / 2
+        else: self.camera_y = max(-CAMERA_PADDING, min(self.camera_y, mh - self.screen_height + CAMERA_PADDING))
 
     def save_map(self):
-        self.map_manager.save_map("map.json")
-        print("Map saved!")
+        data = {"width": self.map_width, "height": self.map_height, "layers": self.layers, "zones": self.zone_map}
+        try:
+            with open("map.json", "w", encoding='utf-8') as f: json.dump(data, f)
+            print("Map Saved!")
+        except Exception as e: print(f"Save Error: {e}")
 
-    # --- UI 처리 ---
+    def load_map(self):
+        try:
+            filename = filedialog.askopenfilename(initialdir=os.getcwd(), title="Select Map File", filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")])
+            if not filename: return False
+            with open(filename, "r", encoding='utf-8') as f: data = json.load(f)
+            load_w = data.get("width", 50); load_h = data.get("height", 50)
+
+            if 'layers' not in data and 'tiles' in data:
+                res = messagebox.askyesno("구형 맵 감지", "구형 맵 데이터입니다.\n최신 형식으로 변환하시겠습니까?")
+                if res:
+                    self.init_empty_map(load_w, load_h)
+                    old_tiles = data['tiles']
+                    rows = min(len(old_tiles), load_h)
+                    for y in range(rows):
+                        cols = min(len(old_tiles[y]), load_w)
+                        for x in range(cols):
+                            old_id = old_tiles[y][x]; new_id = NEW_ID_MAP.get(old_id, old_id); cat = get_tile_category(new_id); val = (new_id, 0)
+                            if 0 <= y < self.map_height and 0 <= x < self.map_width:
+                                if cat in [1, 2]: self.layers['floor'][y][x] = val
+                                elif cat in [3, 4]: self.layers['wall'][y][x] = val
+                                else:
+                                    if self.layers['floor'][y][x][0] == 0: self.layers['floor'][y][x] = (1110000, 0)
+                                    self.layers['object'][y][x] = val
+                    loaded_zones = data.get("zones", [])
+                    for y in range(min(len(loaded_zones), self.map_height)):
+                        for x in range(min(len(loaded_zones[y]), self.map_width)): self.zone_map[y][x] = loaded_zones[y][x]
+                else: return False
+            else:
+                self.init_empty_map(load_w, load_h)
+                loaded_layers = data.get('layers', {})
+                for k in ['floor', 'wall', 'object']:
+                    if k in loaded_layers:
+                        grid = loaded_layers[k]; rows = min(len(grid), self.map_height)
+                        for y in range(rows):
+                            cols = min(len(grid[y]), self.map_width)
+                            for x in range(cols):
+                                v = grid[y][x]
+                                if isinstance(v, int): self.layers[k][y][x] = (v, 0)
+                                elif isinstance(v, list): self.layers[k][y][x] = tuple(v)
+                loaded_zones = data.get("zones", [])
+                for y in range(min(len(loaded_zones), self.map_height)):
+                    for x in range(min(len(loaded_zones[y]), self.map_width)): self.zone_map[y][x] = loaded_zones[y][x]
+
+            self.state = 'EDITOR'; self.camera_x, self.camera_y = 0, 0; self.clamp_camera()
+            self.update_filtered_tiles()
+            return True
+        except Exception as e: print(f"Load Error: {e}"); import traceback; traceback.print_exc(); return False
+
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT: self.running = False
+            if event.type == pygame.VIDEORESIZE:
+                self.screen_width, self.screen_height = event.w, event.h
+                self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
+                self.map_view_width = self.screen_width - self.ui_width
+                self.minimap_size = min(MINIMAP_SIZE_BASE, self.screen_height - 100, self.ui_width - 30)
+                if self.state == 'EDITOR': self.clamp_camera()
+
+            if self.state == 'MENU':
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_n: self.state = 'INPUT_SIZE'; self.input_error_msg = ""
+                    elif event.key == pygame.K_l: self.load_map()
+                    elif event.key == pygame.K_ESCAPE: self.running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mx, my = pygame.mouse.get_pos(); cx, cy = self.screen_width // 2, self.screen_height // 2
+                    if cx - 100 <= mx <= cx + 100:
+                        if cy - 20 <= my <= cy + 30: self.state = 'INPUT_SIZE'; self.input_error_msg = ""
+                        elif cy + 50 <= my <= cy + 100: self.load_map()
+
+            elif self.state == 'INPUT_SIZE':
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_TAB: self.input_active_field = 1 - self.input_active_field
+                    elif event.key == pygame.K_RETURN:
+                        try:
+                            w, h = int(self.input_width_str), int(self.input_height_str)
+                            if 0 < w <= 500 and 0 < h <= 500: self.init_empty_map(w, h); self.state = 'EDITOR'; self.update_filtered_tiles()
+                            else: self.input_error_msg = "1-500 Only"
+                        except: self.input_error_msg = "Invalid Format"
+                    elif event.key == pygame.K_ESCAPE: self.state = 'MENU'
+                    elif event.key == pygame.K_BACKSPACE:
+                        if self.input_active_field == 0: self.input_width_str = self.input_width_str[:-1]
+                        else: self.input_height_str = self.input_height_str[:-1]
+                    elif event.unicode.isdigit():
+                        if self.input_active_field == 0: self.input_width_str += event.unicode
+                        else: self.input_height_str += event.unicode
+
+            elif self.state == 'EDITOR':
+                mx, my = pygame.mouse.get_pos()
+                if event.type == pygame.MOUSEWHEEL:
+                    if mx < self.screen_width - self.ui_width:
+
+                        world_mx = (mx + self.camera_x) / self.zoom
+                        world_my = (my + self.camera_y) / self.zoom
+                        new_zoom = max(self.min_zoom, min(self.max_zoom, self.zoom + (0.1 if event.y > 0 else -0.1)))
+                        if new_zoom != self.zoom:
+                            self.zoom = new_zoom
+                            self.camera_x = (world_mx * self.zoom) - mx
+                            self.camera_y = (world_my * self.zoom) - my
+                        self.clamp_camera()
+                    else:
+                        self.tile_list_scroll = max(0, min(len(self.filtered_tiles) - 1, self.tile_list_scroll - event.y))
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.mm_draw_rect.collidepoint(mx, my):
+                        if event.button == 1:
+                            rx, ry = (mx - self.mm_draw_rect.x) / self.mm_draw_rect.width, (my - self.mm_draw_rect.y) / self.mm_draw_rect.height
+                            self.camera_x, self.camera_y = rx * (self.map_width * TILE_SIZE * self.zoom) - (self.map_view_width / 2), ry * (self.map_height * TILE_SIZE * self.zoom) - (self.screen_height / 2); self.clamp_camera()
+                    elif mx > self.screen_width - self.ui_width:
+                        if event.button == 1: self.handle_ui_click(mx, my)
+                    else:
+                        if event.button in [1, 3]:
+                            if self.tool_mode == 'PASTE':
+                                if event.button == 1: gx, gy = self.screen_to_grid(mx, my); self.apply_paste(gx, gy)
+                                elif event.button == 3: self.tool_mode = 'BRUSH'
+                            else:
+                                self.is_dragging = True; self.is_erasing = (event.button == 3); self.drag_start_pos = self.screen_to_grid(mx, my)
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if self.is_dragging and event.button in [1, 3]: self.apply_fill(); self.is_dragging = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_s and (pygame.key.get_mods() & pygame.KMOD_CTRL): self.save_map()
+                    elif event.key == pygame.K_ESCAPE: self.state = 'MENU'
+                    elif event.key == pygame.K_b: self.tool_mode = 'BRUSH'
+                    elif event.key == pygame.K_c: self.tool_mode = 'COPY'
+                    elif event.key == pygame.K_v:
+                        if self.clipboard: self.tool_mode = 'PASTE'
+                    elif event.key == pygame.K_r:
+                        if self.tool_mode == 'PASTE': self.rotate_clipboard()
+                        else: self.current_rotation = (self.current_rotation + 90) % 360
+                    elif event.key == pygame.K_TAB: self.mode = 'ZONE' if self.mode == 'TILE' else 'TILE'
+                    elif event.key == pygame.K_1: self.active_layer = 'floor'; self.update_filtered_tiles()
+                    elif event.key == pygame.K_2: self.active_layer = 'wall'; self.update_filtered_tiles()
+                    elif event.key == pygame.K_3: self.active_layer = 'object'; self.update_filtered_tiles()
+
+    def draw_button(self, text, rect, is_selected=False, hover_check=True):
+        mx, my = pygame.mouse.get_pos()
+        color = COLORS['BUTTON_HOVER'] if hover_check and rect.collidepoint(mx, my) else COLORS['BUTTON']
+        if is_selected: color = COLORS['SELECTION']
+        pygame.draw.rect(self.screen, color, rect); pygame.draw.rect(self.screen, (200, 200, 200), rect, 1)
+        txt = self.small_font.render(text, True, COLORS['TEXT'])
+        self.screen.blit(txt, (rect.centerx - txt.get_width() // 2, rect.centery - txt.get_height() // 2))
+
+    def draw_menu(self):
+        cx, cy = self.screen_width // 2, self.screen_height // 2
+        title = self.title_font.render("PIXEL NIGHT MAP EDITOR", True, COLORS['TEXT'])
+        self.screen.blit(title, (cx - title.get_width() // 2, cy - 150))
+        self.draw_button("NEW MAP", pygame.Rect(cx - 100, cy - 20, 200, 50))
+        self.draw_button("LOAD MAP", pygame.Rect(cx - 100, cy + 50, 200, 50))
+
+    def draw_input_size(self):
+        cx, cy = self.screen_width // 2, self.screen_height // 2
+        for i, text in enumerate([f"W: {self.input_width_str}", f"H: {self.input_height_str}"]):
+            rect = pygame.Rect(cx - 110 + i*120, cy - 20, 100, 40); color = COLORS['SELECTION'] if self.input_active_field == i else COLORS['BUTTON']
+            pygame.draw.rect(self.screen, color, rect, 2); self.screen.blit(self.font.render(text, True, COLORS['TEXT']), (rect.x + 10, rect.y + 10))
+
+    def draw_editor(self):
+        keys = pygame.key.get_pressed(); ms = 25 / self.zoom
+        if keys[pygame.K_w] or keys[pygame.K_UP]: self.camera_y -= ms
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            if not (pygame.key.get_mods() & pygame.KMOD_CTRL): self.camera_y += ms
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]: self.camera_x -= ms
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]: self.camera_x += ms
+        self.clamp_camera(); self.draw_map_view()
+        mx, my = pygame.mouse.get_pos()
+        self.drag_current_pos = self.screen_to_grid(mx, my)
+        if mx < self.screen_width - self.ui_width and not self.mm_draw_rect.collidepoint(mx, my):
+            if self.tool_mode == 'PASTE': self.draw_paste_preview(mx, my)
+            elif self.is_dragging: self.draw_preview()
+        self.draw_ui_panel(); self.draw_minimap()
+
+    def draw_map_view(self):
+        tp = TILE_SIZE * self.zoom; sc, ec = int(max(0, self.camera_x // tp)), int(min(self.map_width, (self.camera_x + self.map_view_width) // tp + 1))
+        sr, er = int(max(0, self.camera_y // tp)), int(min(self.map_height, (self.screen_height // tp) + 1 + (self.camera_y // tp)))
+        pygame.draw.rect(self.screen, COLORS['MAP_BORDER'], pygame.Rect(-self.camera_x, -self.camera_y, self.map_width * tp, self.map_height * tp), 2)
+        layer_order = ['floor', 'wall', 'object']
+        for layer in layer_order:
+            grid = self.layers[layer]; alpha = 255 if layer == self.active_layer else 180
+            for y in range(max(0, sr-1), min(self.map_height, er+1)):
+                for x in range(max(0, sc-1), min(self.map_width, ec+1)):
+                    sx, sy = self.grid_to_screen(x, y); tid, rot = grid[y][x]
+                    if tid != 0:
+                        if tid not in self.textures: self.textures[tid] = create_texture(tid)
+                        surf = self.textures[tid]
+                        if rot != 0: surf = pygame.transform.rotate(surf, rot)
+                        surf = pygame.transform.scale(surf, (int(tp) + 1, int(tp) + 1))
+                        if alpha < 255: surf.set_alpha(alpha)
+                        self.screen.blit(surf, (sx, sy))
+                    if layer == 'floor':
+                        zid = self.zone_map[y][x]
+                        if zid != 0:
+                            s = pygame.Surface((int(tp) + 1, int(tp) + 1), pygame.SRCALPHA); s.fill(ZONES[zid]['color']); self.screen.blit(s, (sx, sy))
+        self.draw_grid_lines()
+
+    def draw_grid_lines(self):
+        tp = TILE_SIZE * self.zoom
+        for x in range(0, self.map_width + 1):
+            sx, _ = self.grid_to_screen(x, 0)
+            if 0 <= sx <= self.map_view_width:
+                col, width = COLORS['GRID_10'], 1
+                if x % 10 == 0: col = COLORS['GRID_50']
+                if x % 50 == 0: col, width = COLORS['GRID'], 2
+                if x == self.map_width // 2: col, width = COLORS['GRID_CENTER'], 3
+                pygame.draw.line(self.screen, col, (sx, 0), (sx, self.screen_height), width)
+        for y in range(0, self.map_height + 1):
+            _, sy = self.grid_to_screen(0, y)
+            if 0 <= sy <= self.screen_height:
+                col, width = COLORS['GRID_10'], 1
+                if y % 10 == 0: col = COLORS['GRID_50']
+                if y % 50 == 0: col, width = COLORS['GRID'], 2
+                if y == self.map_height // 2: col, width = COLORS['GRID_CENTER'], 3
+                pygame.draw.line(self.screen, col, (0, sy), (self.map_view_width, sy), width)
+
+    def draw_preview(self):
+        sx, ex, sy, ey = self.get_selection_rect(); tp = TILE_SIZE * self.zoom
+        preview_surf = None
+        if self.mode == 'TILE' and not self.is_erasing:
+            tid = self.get_selected_tile_id()
+            if tid in self.textures:
+                tex = self.textures[tid]
+                if self.current_rotation != 0: tex = pygame.transform.rotate(tex, self.current_rotation)
+                preview_surf = pygame.transform.scale(tex, (int(tp), int(tp))); preview_surf.set_alpha(150)
+        for y in range(sy, ey + 1):
+            for x in range(sx, ex + 1):
+                px, py = self.grid_to_screen(x, y); r = (px, py, tp, tp)
+                if self.tool_mode == 'COPY': pygame.draw.rect(self.screen, COLORS['COPY_SELECT'], r, 2)
+                else:
+                    if self.is_erasing: pygame.draw.rect(self.screen, (200, 50, 50), r, 2)
+                    else:
+                        if self.mode == 'TILE' and preview_surf: self.screen.blit(preview_surf, (px, py))
+                        elif self.mode == 'ZONE':
+                            c = ZONES[self.selected_zone_id]['color']; s = pygame.Surface((int(tp), int(tp)), pygame.SRCALPHA); s.fill(c); self.screen.blit(s, (px, py))
+                        pygame.draw.rect(self.screen, (200, 200, 200), r, 1)
+
+    def draw_paste_preview(self, mx, my):
+        if not self.clipboard: return
+        gx, gy = self.screen_to_grid(mx, my); tp = TILE_SIZE * self.zoom
+        w, h = self.clipboard['w'], self.clipboard['h']
+        for y in range(h):
+            for x in range(w):
+                sx, sy = self.grid_to_screen(gx + x, gy + y)
+                tid, rot = 0, 0
+                for layer in ['object', 'wall', 'floor']:
+                    val = self.clipboard['data'][layer][y][x]
+                    if val[0] != 0:
+                        tid, rot = val; break
+
+                if tid != 0:
+                    if tid not in self.textures: self.textures[tid] = create_texture(tid)
+                    t = self.textures[tid]
+                    if rot != 0: t = pygame.transform.rotate(t, rot)
+                    t = t.copy(); t.set_alpha(150); self.screen.blit(pygame.transform.scale(t, (int(tp), int(tp))), (sx, sy))
+                pygame.draw.rect(self.screen, (255, 255, 255), (sx, sy, tp, tp), 1)
+
+    def draw_ui_panel(self):
+        self.ui_rects = {}
+        pr = (self.screen_width - self.ui_width, 0, self.ui_width, self.screen_height)
+        pygame.draw.rect(self.screen, COLORS['UI_BG'], pr); pygame.draw.rect(self.screen, COLORS['UI_BORDER'], pr, 2)
+        y_off = 10; self.screen.blit(self.font.render(f"MODE: {self.mode} (TAB)", True, COLORS['SELECTION']), (pr[0] + 10, y_off)); y_off += 30
+        if self.mode == 'TILE':
+            self.screen.blit(self.small_font.render("Active Layer (1-3)", True, (200, 200, 200)), (pr[0] + 10, y_off)); y_off += 20
+            for i, layer in enumerate(['floor', 'wall', 'object']):
+                rect = pygame.Rect(pr[0] + 10 + i*100, y_off, 95, 25)
+                self.draw_button(layer.upper(), rect, is_selected=(self.active_layer == layer)); self.ui_rects[f"LAYER_{layer}"] = rect
+            y_off += 35
+            self.screen.blit(self.small_font.render(f"Rotation: {self.current_rotation}° (R)", True, COLORS['SELECTION']), (pr[0] + 10, y_off)); y_off += 20
+            filter_opts = { 'A': [1,2,3,4,5,6,7,8,9], 'B': [1,2,3], 'C': [1,2], 'D': [0,1,2], 'E': [0,1,2] }
+            labels = {'A':'Cat','B':'Type','C':'Col','D':'Act','E':'Hide'}
+            for f_key in ['A', 'B', 'C', 'D', 'E']:
+                lbl = f"{f_key}: {labels[f_key]}"; self.screen.blit(self.small_font.render(lbl, True, (180, 180, 180)), (pr[0] + 10, y_off))
+                all_rect = pygame.Rect(pr[0] + 60, y_off-2, 30, 18); self.draw_button("ALL", all_rect, is_selected=(self.filters[f_key] is None)); self.ui_rects[f"FILTER_{f_key}_ALL"] = all_rect
+                for i, val in enumerate(filter_opts[f_key]):
+                    rect = pygame.Rect(pr[0] + 95 + i*22, y_off-2, 20, 18); self.draw_button(str(val), rect, is_selected=(self.filters[f_key] == val)); self.ui_rects[f"FILTER_{f_key}_{val}"] = rect
+                y_off += 22
+            y_off += 10
+            self.screen.blit(self.small_font.render(f"Found: {len(self.filtered_tiles)}", True, COLORS['SELECTION']), (pr[0] + 10, y_off)); y_off += 20
+            item_h = 28; max_items = (self.screen_height - self.minimap_size - y_off - 150) // item_h
+            visible_tiles = self.filtered_tiles[self.tile_list_scroll : self.tile_list_scroll + max_items]
+            for i, tid in enumerate(visible_tiles):
+                abs_idx = self.tile_list_scroll + i; btn_rect = pygame.Rect(pr[0] + 10, y_off, self.ui_width - 20, item_h - 3)
+                if abs_idx == self.current_tile_idx: pygame.draw.rect(self.screen, (60, 60, 60), btn_rect); pygame.draw.rect(self.screen, COLORS['SELECTION'], btn_rect, 1)
+                tex = self.ui_textures[tid]
+                if self.current_rotation != 0: tex = pygame.transform.rotate(tex, self.current_rotation)
+                if tex.get_width() > 24 or tex.get_height() > 24: tex = pygame.transform.scale(tex, (24, 24))
+                self.screen.blit(tex, (btn_rect.x + 5, btn_rect.y + 2)); self.screen.blit(self.small_font.render(f"{tid}: {TILE_DATA[tid]['name']}", True, COLORS['TEXT']), (btn_rect.x + 35, btn_rect.y + 6))
+                self.ui_rects[f"TILE_ABS_{abs_idx}"] = btn_rect; y_off += item_h
+        else:
+            for zid, info in ZONES.items():
+                rect = pygame.Rect(pr[0] + 10, y_off, self.ui_width - 20, 25)
+                if zid == self.selected_zone_id: pygame.draw.rect(self.screen, (60, 60, 60), rect); pygame.draw.rect(self.screen, COLORS['SELECTION'], rect, 1)
+                pygame.draw.rect(self.screen, info['color'][:3], (rect.x + 5, rect.y + 5, 15, 15)); self.screen.blit(self.font.render(info['name'], True, COLORS['TEXT']), (rect.x + 30, rect.y + 2))
+                self.ui_rects[f"ZONE_ID_{zid}"] = rect; y_off += 28
+        gy = self.screen_height - self.minimap_size - 140
+        for t in ["WASD: Cam | Wheel: Zoom", "L-Drag: Place | R-Drag: Erase", "B: Brush | C: Copy | V: Paste", "R: Rotate | 1/2/3: Layer", "Ctrl+S: Save | ESC: Menu"]: self.screen.blit(self.small_font.render(t, True, (180, 180, 180)), (pr[0] + 10, gy)); gy += 16
+
+    def draw_minimap(self):
+        mm_x, mm_y = self.screen_width - self.minimap_size - 20, self.screen_height - self.minimap_size - 20
+        scale = min(self.minimap_size / self.map_width, self.minimap_size / self.map_height)
+        self.mm_draw_rect = pygame.Rect(mm_x, mm_y, int(self.map_width * scale), int(self.map_height * scale))
+        pygame.draw.rect(self.screen, (0, 0, 0), self.mm_draw_rect); pygame.draw.rect(self.screen, COLORS['UI_BORDER'], self.mm_draw_rect, 1)
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                tid = self.layers['wall'][y][x][0]
+                if tid == 0: tid = self.layers['floor'][y][x][0]
+                if tid != 0 and tid in TILE_DATA: pygame.draw.rect(self.screen, TILE_DATA[tid]['color'], (int(mm_x + x * scale), int(mm_y + y * scale), max(1, int(scale)), max(1, int(scale))))
+        vw, vh = self.screen_width / self.zoom, self.screen_height / self.zoom; clipped = pygame.Rect(int(mm_x + (self.camera_x / TILE_SIZE) * scale), int(mm_y + (self.camera_y / TILE_SIZE) * scale), int(vw / TILE_SIZE * scale), int(vh / TILE_SIZE * scale)).clip(self.mm_draw_rect)
+        if clipped.width > 0: pygame.draw.rect(self.screen, (255, 255, 255), clipped, 1)
+
     def handle_ui_click(self, mx, my):
-        # 저장된 버튼 충돌 체크
-        for rect, tid in self.ui_tile_buttons:
+        for key, rect in self.ui_rects.items():
             if rect.collidepoint(mx, my):
-                self.selected_tid = tid
+                if key.startswith("LAYER_"): self.active_layer = key.replace("LAYER_", "").lower(); self.update_filtered_tiles()
+                elif key.startswith("FILTER_"):
+                    parts = key.split('_'); f_key = parts[1]; val = parts[2]
+                    self.filters[f_key] = None if val == "ALL" else int(val); self.update_filtered_tiles()
+                elif key.startswith("TILE_ABS_"): self.current_tile_idx = int(key.replace("TILE_ABS_", ""))
+                elif key.startswith("ZONE_ID_"): self.selected_zone_id = int(key.replace("ZONE_ID_", ""))
                 return
-        
-        for rect, mode in self.ui_tab_buttons:
-            if rect.collidepoint(mx, my):
-                self.set_mode(mode)
-                return
 
-    def draw(self):
-        self.screen.fill(C_BG)
-        screen_w, screen_h = self.screen.get_size()
-        
-        # --- 1. Map Rendering (2.5D) ---
-        vw = (screen_w - self.ui_width) / self.zoom
-        vh = screen_h / self.zoom
-        
-        start_col = int(self.camera_x // TILE_SIZE) - 2
-        start_row = int(self.camera_y // TILE_SIZE) - 6
-        end_col = start_col + int(vw // TILE_SIZE) + 4
-        end_row = start_row + int(vh // TILE_SIZE) + 12
+    def run(self):
+        while self.running:
+            self.handle_events(); self.screen.fill(COLORS['BG'])
+            if self.state == 'MENU': self.draw_menu()
+            elif self.state == 'INPUT_SIZE': self.draw_input_size()
+            elif self.state == 'EDITOR': self.draw_editor()
+            pygame.display.flip(); self.clock.tick(FPS)
+        pygame.quit(); sys.exit()
 
-        for z in range(self.current_z + 1):
-            if z >= len(self.map_manager.layers): break
-            is_active = (z == self.current_z)
-            alpha = 255 if is_active else 80 
-            
-            for layer in ['floor', 'wall', 'object']:
-                for r in range(start_row, end_row):
-                    for c in range(start_col, end_col):
-                        draw_x = (c * TILE_SIZE - self.camera_x) * self.zoom
-                        draw_y = (r * TILE_SIZE - self.camera_y - (z * BLOCK_HEIGHT)) * self.zoom
-                        
-                        if draw_x < -TILE_SIZE*3 or draw_x > screen_w - self.ui_width: continue
-                        if draw_y < -TILE_SIZE*3 or draw_y > screen_h: continue
-                        
-                        val = self.map_manager.get_tile_full(c, r, z, layer)
-                        tid = val[0]
-                        if tid == 0: continue
-                        
-                        img = get_texture(tid, val[1])
-                        if not img: continue
-                        
-                        final_img = img
-                        if self.zoom != 1.0:
-                            w, h = img.get_size()
-                            final_img = pygame.transform.scale(img, (int(w*self.zoom), int(h*self.zoom)))
-                        
-                        if not is_active: final_img.set_alpha(alpha)
-                        self.screen.blit(final_img, (draw_x, draw_y))
-                        if not is_active: final_img.set_alpha(255)
-
-        # --- 2. Grid & Cursor ---
-        if self.show_grid:
-            mx, my = pygame.mouse.get_pos()
-            if mx < screen_w - self.ui_width:
-                gx, gy = self.screen_to_world(mx, my)
-                cx = (gx * TILE_SIZE - self.camera_x) * self.zoom
-                cy = (gy * TILE_SIZE - self.camera_y - (self.current_z * BLOCK_HEIGHT)) * self.zoom
-                sz = TILE_SIZE * self.zoom
-                
-                pygame.draw.rect(self.screen, (255, 0, 0), (cx, cy, sz, sz), 2)
-                coord_txt = self.font.render(f"{gx},{gy} (Z:{self.current_z})", True, (255, 255, 255))
-                self.screen.blit(coord_txt, (cx + 10, cy - 20))
-
-        # --- 3. UI Panel ---
-        self.draw_ui()
-
-    def draw_ui(self):
-        screen_w, screen_h = self.screen.get_size()
-        ui_x = screen_w - self.ui_width
-        
-        pygame.draw.rect(self.screen, C_UI_BG, (ui_x, 0, self.ui_width, screen_h))
-        pygame.draw.line(self.screen, C_UI_BORDER, (ui_x, 0), (ui_x, screen_h), 2)
-        
-        self.ui_tile_buttons = []
-        self.ui_tab_buttons = []
-        
-        curr_y = 10
-        infos = [
-            f"FPS: {int(self.clock.get_fps())}",
-            f"Layer(Z): {self.current_z}  [PgUp/Dn]",
-            f"Zoom: {self.zoom:.1f}",
-        ]
-        for line in infos:
-            t = self.font.render(line, True, C_TEXT)
-            self.screen.blit(t, (ui_x + 10, curr_y))
-            curr_y += 20
-            
-        curr_y += 10
-        modes = [('floor', '1.바닥'), ('wall', '2.벽'), ('object', '3.물체')]
-        tab_w = (self.ui_width - 20) // 3
-        
-        for i, (mode, label) in enumerate(modes):
-            bx = ui_x + 10 + i * tab_w
-            by = curr_y
-            rect = pygame.Rect(bx, by, tab_w - 2, 30)
-            col = C_ACTIVE_TAB if self.current_layer == mode else C_UI_BORDER
-            pygame.draw.rect(self.screen, col, rect, 0, 5)
-            pygame.draw.rect(self.screen, (200, 200, 200), rect, 1, 5)
-            txt = self.font.render(label, True, (255, 255, 255))
-            tx = bx + (tab_w - txt.get_width()) // 2
-            ty = by + (30 - txt.get_height()) // 2
-            self.screen.blit(txt, (tx, ty))
-            self.ui_tab_buttons.append((rect, mode))
-            
-        curr_y += 40
-        prev_rect = pygame.Rect(ui_x + 10, curr_y, 64, 64)
-        pygame.draw.rect(self.screen, (0, 0, 0), prev_rect)
-        pygame.draw.rect(self.screen, C_TEXT, prev_rect, 2)
-        prev_img = get_texture(self.selected_tid, self.rotation)
-        if prev_img:
-            scaled = pygame.transform.scale(prev_img, (64, 64))
-            self.screen.blit(scaled, prev_rect)
-            
-        t_info = f"ID: {self.selected_tid}"
-        if self.selected_tid in TILE_DATA:
-            t_name = TILE_DATA[self.selected_tid].get('name', 'Unknown')
-            t_info += f"\n{t_name}"
-        lines = t_info.split('\n')
-        for i, ln in enumerate(lines):
-            t = self.font.render(ln, True, C_HIGHLIGHT)
-            self.screen.blit(t, (ui_x + 85, curr_y + i*20))
-            
-        curr_y += 80
-        pygame.draw.line(self.screen, C_UI_BORDER, (ui_x, curr_y), (screen_w, curr_y), 2)
-        curr_y += 10
-        
-        tiles = self.categorized_tiles.get(self.current_layer, [])
-        clip_rect = pygame.Rect(ui_x, curr_y, self.ui_width, screen_h - curr_y)
-        self.screen.set_clip(clip_rect)
-        start_y = curr_y - self.palette_scroll
-        btn_sz = self.tile_btn_size
-        gap = self.tile_btn_margin
-        
-        col_cnt = 0
-        row_cnt = 0
-        
-        for tid in tiles:
-            img = get_texture(tid)
-            if not img: continue
-            bx = ui_x + 15 + col_cnt * (btn_sz + gap)
-            by = start_y + row_cnt * (btn_sz + gap)
-            
-            if by + btn_sz > curr_y:
-                rect = pygame.Rect(bx, by, btn_sz, btn_sz)
-                pygame.draw.rect(self.screen, (60, 60, 70), rect)
-                scaled = pygame.transform.scale(img, (btn_sz-4, btn_sz-4))
-                self.screen.blit(scaled, (bx+2, by+2))
-                if tid == self.selected_tid:
-                    pygame.draw.rect(self.screen, C_HIGHLIGHT, rect, 2)
-                self.ui_tile_buttons.append((rect, tid))
-            
-            col_cnt += 1
-            if col_cnt >= self.tiles_per_row:
-                col_cnt = 0
-                row_cnt += 1
-                
-        self.screen.set_clip(None)
-
-if __name__ == "__main__":
-    MapEditor().run()
+if __name__ == "__main__": MapEditor().run()

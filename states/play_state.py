@@ -19,6 +19,7 @@ from systems.debug_console import DebugConsole
 from entities.npc import Dummy
 from ui.widgets.pause_menu import PauseMenu
 from ui.widgets.cctv_view import CCTVViewWidget
+from world.tiles import get_texture
 
 class PlayState(BaseState):
     def __init__(self, game):
@@ -160,7 +161,7 @@ class PlayState(BaseState):
         if self.camera: self.camera.resize(self.game.screen_width, self.game.screen_height)
         if not self.player.is_dead and not (self.ui.show_vending or self.ui.show_inventory or self.ui.show_voting or self.is_chatting):
             if not self.player.is_stunned():
-                fx = self.player.update(dt, self.current_phase, self.npcs, self.world.is_blackout, self.weather)
+                fx = self.player.update(self.current_phase, self.npcs, self.world.is_blackout, self.weather)
                 if fx:
                     for f in fx: self._process_sound_effect(f)
                 for p in self.player.popups:
@@ -183,7 +184,7 @@ class PlayState(BaseState):
         for n in self.npcs:
             if not n.is_stunned(): self._handle_npc_action(n.update(self.current_phase, self.player, self.npcs, self.world.is_mafia_frozen, self.world.noise_list, self.day_count, self.world.bloody_footsteps), n, 0)
         if self.player.role == "SPECTATOR": self._update_spectator_camera()
-        else: self.camera.update(self.player.rect.centerx, self.player.rect.centery)
+        else: self.camera.smooth_update(self.player.rect.centerx, self.player.rect.centery, dt)
 
         # FOV & Rendering Prep
         if self.player.role == "SPECTATOR":
@@ -195,7 +196,7 @@ class PlayState(BaseState):
             if self.player.role == "POLICE" and self.player.flashlight_on and self.current_phase in ['EVENING', 'NIGHT', 'DAWN']:
                 direction = self.player.facing_dir
         
-        self.visible_tiles = self.fov.cast_rays(self.player.rect.centerx, self.player.rect.centery, rad, direction, 60, z_level=self.player.z_level)
+        self.visible_tiles = self.fov.cast_rays(self.player.rect.centerx, self.player.rect.centery, rad, direction, 60)
         for tile in self.visible_tiles: self.tile_alphas[tile] = min(255, self.tile_alphas.get(tile, 0) + 15)
         for tile in list(self.tile_alphas.keys()):
             if tile not in self.visible_tiles:
@@ -284,53 +285,86 @@ class PlayState(BaseState):
     def draw(self, screen):
         screen.fill(COLORS['BG'])
         if not self.camera: return
+        canvas = self.lighting.draw(screen, self.camera)
+        canvas.fill(COLORS['BG'])
         
-        # 모든 맵 타일과 엔티티를 MapRenderer가 깊이 정렬하여 그림
-        # MapRenderer의 draw 메서드 시그니처 변경에 맞춰 인자 전달
-        all_entities = [self.player] + self.npcs # 플레이어와 NPC를 함께 렌더러에 전달
-        
-        # 현재 플레이어의 Z-Level을 MapRenderer에 전달
-        player_current_z = self.player.z_level if self.player and hasattr(self.player, 'z_level') else 0
-
-        viewer_role = self.player.role if self.player else "SPECTATOR"
-        is_device_on = self.player.device_on if self.player else False
-        
+        # 1. Draw Map Ground (Floor, Objects, Mask)
         if self.map_renderer:
             vis = self.visible_tiles if self.player.role != "SPECTATOR" else None
-            self.map_renderer.draw(
-                screen, 
-                self.camera, 
-                0, 
-                all_entities, 
-                player_current_z, 
-                visible_tiles=vis, 
-                tile_alphas=self.tile_alphas,
-                viewer_role=viewer_role,           # 추가됨
-                current_phase=self.current_phase,  # 추가됨
-                viewer_device_on=is_device_on      # 추가됨
-            )
-
+            self.map_renderer.draw_ground(canvas, self.camera, visible_tiles=vis, tile_alphas=self.tile_alphas)
         
-        # Lighting Manager는 이제 MapRenderer가 그린 위에 마스크를 씌움
-        if self.player.role != "SPECTATOR": self.lighting.apply_lighting(self.camera)
+        # 2. Collect All Renderables (Entities + Walls + Doors)
+        render_list = []
+        
+        # Add Entities (Player + NPCs)
+        if not self.player.is_dead:
+            render_list.append(self.player)
+        
+        for n in self.npcs:
+            if (int(n.rect.centerx//TILE_SIZE), int(n.rect.centery//TILE_SIZE)) in self.visible_tiles or self.player.role == "SPECTATOR":
+                render_list.append(n)
+        
+        # Add Vertical Map Objects (Walls, Doors)
+        walls_and_doors = []
+        if self.map_renderer:
+            walls_and_doors = self.map_renderer.get_vertical_objects(self.camera)
+            render_list.extend(walls_and_doors)
+            
+        # 3. Sort by Y (Bottom)
+        # Entities have .rect, Dicts have ['rect']
+        render_list.sort(key=lambda o: o.rect.bottom if hasattr(o, 'rect') else o['rect'].bottom)
+        
+        # [Dynamic Shadow Params]
+        shift_x, shift_y = self.lighting.get_shadow_params()
 
-        # 이펙트 및 지시자 (엔티티와 별개로 그려짐)
-        for fx in self.world.effects: fx.draw(screen, self.camera.x, self.camera.y)
-        for i in self.world.indicators: i.draw(screen, self.player.rect, self.camera.x, self.camera.y)
+        # [Draw All Shadows] - Walls, Objects, Trees (Sprite-based)
+        if self.map_renderer:
+            self.map_renderer.draw_all_shadows(canvas, self.camera, shift_x, shift_y)
+
+        # 4. Draw Sorted
+        for obj in render_list:
+            if isinstance(obj, dict): # Map Object
+                ox = obj['rect'].x - self.camera.x
+                oy = obj['rect'].y - self.camera.y
+                tid = obj['tid']
+                rot = obj['rot']
+                img = get_texture(tid, rot)
+                
+                if obj['type'] == 'WALL':
+                    # Draw Face (Darker?)
+                    # For now just draw standard
+                    canvas.blit(img, (ox, oy))
+                    
+                    # Draw Top (Shifted Up)
+                    top_y = oy - WALL_HEIGHT
+                    canvas.blit(img, (ox, top_y))
+                    
+                    # Add highlight to top to differentiate
+                    # Simple way: Add white overlay with ADD blend
+                    highlight = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+                    highlight.fill((30, 30, 30, 0)) # Slight brighten
+                    canvas.blit(highlight, (ox, top_y), special_flags=pygame.BLEND_RGBA_ADD)
+                    
+                else: # DOOR
+                    canvas.blit(img, (ox, oy))
+                    
+            else: # Entity
+                CharacterRenderer.draw_shadow(canvas, obj, self.camera.x, self.camera.y, shift_x, shift_y)
+                CharacterRenderer.draw_entity(canvas, obj, self.camera.x, self.camera.y, self.player.role, self.current_phase, self.player.device_on)
+
+        for fx in self.world.effects: fx.draw(canvas, self.camera.x, self.camera.y)
+        for i in self.world.indicators: i.draw(canvas, self.player.rect, self.camera.x, self.camera.y)
+        if self.player.role != "SPECTATOR": self.lighting.apply_lighting(self.camera)
 
         # [Work Target Indicator - Highlight] - DRAWN ON CANVAS
         self.found_visible_work_target = False
         if self.work_target_tid and self.player.alive:
-            # [수정] Z축을 고려하여 타일 캐시에서 검색
             target_positions = self.world.map_manager.tile_cache.get(self.work_target_tid, [])
             if target_positions:
                 visible_targets_for_highlight = []
-                for (tx_world, ty_world, tz) in target_positions:
-                    # 현재 플레이어의 층과 같은 타일만 하이라이트
-                    if tz != player_current_z: continue
-
-                    canvas_tx = tx_world - self.camera.x
-                    canvas_ty = ty_world - self.camera.y - (tz * BLOCK_HEIGHT)
+                for (tx, ty) in target_positions:
+                    canvas_tx = tx - self.camera.x
+                    canvas_ty = ty - self.camera.y
                     if -TILE_SIZE < canvas_tx < self.camera.width and -TILE_SIZE < canvas_ty < self.camera.height:
                         visible_targets_for_highlight.append((canvas_tx, canvas_ty))
                 
@@ -340,18 +374,17 @@ class PlayState(BaseState):
                     if pulse > 1.0: pulse = 2.0 - pulse
                     glow_val = int(100 + 155 * pulse)
                     for (stx, sty) in visible_targets_for_highlight:
-                        pygame.draw.rect(screen, (glow_val, glow_val, 0), (stx, sty, TILE_SIZE, TILE_SIZE), 2)
+                        pygame.draw.rect(canvas, (glow_val, glow_val, 0), (stx, sty, TILE_SIZE, TILE_SIZE), 2)
 
         # --- FINAL SCALING: CANVAS -> SCREEN ---
-        # MapRenderer에서 직접 screen에 그리기 때문에 별도 스케일링 필요 없음
-        # screen.blit(pygame.transform.scale(canvas, (self.game.screen_width, self.game.screen_height)), (0, 0))
-
+        screen.blit(pygame.transform.scale(canvas, (self.game.screen_width, self.game.screen_height)), (0, 0))
+        
         # [Minigame] Draw on SCREEN space to be always in the center
         if self.player.minigame.active:
             mx = self.game.screen_width // 2
             my = (self.game.screen_height // 2) - (self.player.minigame.height // 2)
             self.player.minigame.draw(screen, mx, my)
-
+        
         # --- DRAW SCREEN-SPACE UI (Weather, Pinpoint, etc.) ---
         if self.weather == 'RAIN':
             for p in self.weather_particles: pygame.draw.line(screen, (150, 150, 255, 150), (p[0], p[1]), (p[0]-2, p[1]+10))
@@ -360,39 +393,36 @@ class PlayState(BaseState):
 
         # [Work Target Indicator - Pinpoint Arrow] - DRAWN ON SCREEN
         if self.work_target_tid and self.player.alive and not self.found_visible_work_target:
-            # [수정] Z축을 고려하여 타일 캐시에서 검색
-            target_positions_all_z = self.world.map_manager.tile_cache.get(self.work_target_tid, [])
-            target_positions = [(tx, ty, tz) for tx, ty, tz in target_positions_all_z if tz == player_current_z]
-
+            target_positions = self.world.map_manager.tile_cache.get(self.work_target_tid, [])
             if target_positions:
                 nearest_pos = None
                 min_dist_sq = float('inf')
                 # World Coords
                 px_world, py_world = self.player.rect.centerx, self.player.rect.centery
                 
-                for (tx, ty, tz) in target_positions:
+                for (tx, ty) in target_positions:
                     cx, cy = tx + TILE_SIZE//2, ty + TILE_SIZE//2
                     dist_sq = (px_world - cx)**2 + (py_world - cy)**2
                     if dist_sq < min_dist_sq:
                         min_dist_sq = dist_sq
-                        nearest_pos = (tx, ty, tz) # Z도 함께 저장
+                        nearest_pos = (tx, ty)
                 
                 if nearest_pos:
-                    tx_world, ty_world, tz_world = nearest_pos
+                    tx_world, ty_world = nearest_pos
                     sw, sh = self.game.screen_width, self.game.screen_height
                     zoom = self.camera.zoom_level
                     
                     # Player Screen Position
                     px = (self.player.rect.centerx - self.camera.x) * zoom
-                    py = (self.player.rect.centery - self.camera.y - (player_current_z * BLOCK_HEIGHT)) * zoom # [수정] 플레이어 Y도 Z-Level 반영
+                    py = (self.player.rect.centery - self.camera.y) * zoom
                     
-                    # Target World Center (Z-Level 반영)
+                    # Target World Center
                     target_cx = tx_world + TILE_SIZE//2
-                    target_cy = ty_world + TILE_SIZE//2 - (tz_world * BLOCK_HEIGHT) # [수정] 타겟 Y도 Z-Level 반영
+                    target_cy = ty_world + TILE_SIZE//2
                     
                     # Vector from Player to Target (World Space)
                     dx_world = target_cx - self.player.rect.centerx
-                    dy_world = target_cy - (self.player.rect.centery - (player_current_z * BLOCK_HEIGHT)) # [수정] Y좌표 기준 일치
+                    dy_world = target_cy - self.player.rect.centery
                     angle = math.atan2(dy_world, dx_world)
                     
                     # Normalized Direction

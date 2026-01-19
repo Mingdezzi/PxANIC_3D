@@ -1,0 +1,9 @@
+2026-01-19 16:48:21,670 - [INFO] - [DATA] Loaded 17 items.
+2026-01-19 16:48:21,670 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-19 16:48:21,670 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-19 16:48:21,931 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-19 16:48:21,967 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-19 16:48:24,239 - [INFO] - [PLAY] Entering PlayState...
+2026-01-19 16:48:24,252 - [INFO] - [PLAYER] Initialized at (1664, 1568) Role: CITIZEN
+2026-01-19 16:48:24,252 - [INFO] - [PLAYER] Role changed to CITIZEN (FISHER)
+2026-01-19 16:48:32,752 - [INFO] - [SYSTEM] Engine Shutting Down

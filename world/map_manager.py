@@ -2,163 +2,224 @@ import json
 import os
 import pygame
 from settings import TILE_SIZE
-from world.tiles import check_collision, TILE_DATA, BED_TILES, HIDEABLE_TILES
+from world.tiles import check_collision, NEW_ID_MAP, TILE_DATA, BED_TILES, HIDEABLE_TILES
 
 class MapManager:
     def __init__(self):
-        # [Core Change] 3차원 레이어 시스템
-        # layers[z] = {'floor': 2D배열, 'wall': 2D배열, 'object': 2D배열}
-        self.layers = [] 
+        self.map_data = {
+            'floor': [],
+            'wall': [],
+            'object': []
+        }
+        self.zone_map = []
+        self.collision_cache = []  # [최적화] 충돌 맵 캐시 추가
         self.width = 0
         self.height = 0
         self.spawn_x = 100
         self.spawn_y = 100
-        
-        # 3D 충돌 맵: self.collision_cache[z][y][x]
-        self.collision_cache = [] 
-        
-        # 타일 캐시: {tid: [(x, y, z), ...]}
-        self.tile_cache = {} 
+        self.tile_cache = {}
         self.tile_cooldowns = {}
-        self.open_doors = {} # Key: (x, y, z), Value: open_time
-        self.zone_map = []
+        self.open_doors = {}
         
         self.name_to_tid = {data['name']: tid for tid, data in TILE_DATA.items()}
 
-    def _ensure_z_layer(self, target_z):
-        """해당 Z층이 존재하지 않으면, 그 사이의 모든 층을 생성합니다."""
-        while len(self.layers) <= target_z:
-            new_layer = {
-                'floor': [[(0, 0) for _ in range(self.width)] for _ in range(self.height)],
-                'wall': [[(0, 0) for _ in range(self.width)] for _ in range(self.height)],
-                'object': [[(0, 0) for _ in range(self.width)] for _ in range(self.height)]
-            }
-            self.layers.append(new_layer)
-            # 새 층의 충돌 맵도 생성
-            self.collision_cache.append([[False for _ in range(self.width)] for _ in range(self.height)])
-
-    def get_tile(self, gx, gy, z=0, layer='floor'):
-        # 범위 체크에 z 추가
-        if 0 <= z < len(self.layers) and 0 <= gx < self.width and 0 <= gy < self.height:
-            return self.layers[z][layer][gy][gx][0]
+    def get_tile(self, gx, gy, layer='floor'):
+        # [최적화] 범위 검사 후 직접 접근 (isinstance 제거)
+        if 0 <= gx < self.width and 0 <= gy < self.height:
+            # 모든 타일 데이터는 (tid, rot) 튜플 형태임을 보장
+            return self.map_data[layer][gy][gx][0]
         return 0
 
-    def get_tile_full(self, gx, gy, z=0, layer='floor'):
-        if 0 <= z < len(self.layers) and 0 <= gx < self.width and 0 <= gy < self.height:
-            return self.layers[z][layer][gy][gx]
+    def get_tile_full(self, gx, gy, layer='floor'):
+        if 0 <= gx < self.width and 0 <= gy < self.height:
+            return self.map_data[layer][gy][gx]
         return (0, 0)
 
-    def set_tile(self, gx, gy, tid, z=0, rotation=0, layer=None):
+    def set_tile(self, gx, gy, tid, rotation=0, layer=None):
         if not (0 <= gx < self.width and 0 <= gy < self.height): return
         
-        # 필요한 층까지 자동 생성
-        self._ensure_z_layer(z)
-        
         if layer is None:
-            # ID 범위로 레이어 자동 추론
+            # 간단한 ID 범위 체크 (tiles.py의 get_tile_type 로직 인라인화 가능하면 더 좋음)
             if 1000000 <= tid < 3000000: layer = 'floor'
             elif 3000000 <= tid < 5000000: layer = 'wall'
             else: layer = 'object'
             
-        # 데이터 설정
-        self.layers[z][layer][gy][gx] = (tid, rotation)
+        # [Cache Update] Get old tid to remove from cache
+        old_val = self.map_data[layer][gy][gx]
+        old_tid = old_val[0] if isinstance(old_val, (tuple, list)) else old_val
         
-        # 최적화: 충돌 갱신 (Z축 반영)
-        self._update_collision_at(gx, gy, z)
+        # [최적화] 항상 튜플로 저장
+        self.map_data[layer][gy][gx] = (tid, rotation)
         
-        # 타일 캐시 갱신 (간소화됨)
-        # 실제로는 old_tid를 추적해서 remove하고 append 해야 함
+        # [Cache Update] Update tile_cache
+        pos = (gx * TILE_SIZE, gy * TILE_SIZE)
+        
+        # Remove old
+        if old_tid != 0 and old_tid in self.tile_cache:
+            if pos in self.tile_cache[old_tid]:
+                self.tile_cache[old_tid].remove(pos)
+                
+        # Add new
+        if tid != 0:
+            if tid not in self.tile_cache: self.tile_cache[tid] = []
+            if pos not in self.tile_cache[tid]:
+                self.tile_cache[tid].append(pos)
+        
+        # [최적화] 타일 변경 시 해당 위치의 충돌 캐시만 즉시 갱신
+        self._update_collision_at(gx, gy)
 
-    def _update_collision_at(self, x, y, z):
-        if not (0 <= z < len(self.layers) and 0 <= x < self.width and 0 <= y < self.height): return
+    # [최적화] 단일 타일 충돌 갱신 헬퍼
+    def _update_collision_at(self, x, y):
+        if not (0 <= x < self.width and 0 <= y < self.height): return
         
         is_blocked = False
-        # 벽이나 오브젝트가 있으면 충돌
-        for layer in ['wall', 'object']:
-            tid = self.layers[z][layer][y][x][0]
+        
+        # 각 레이어별 충돌 체크
+        for layer in ['floor', 'wall', 'object']:
+            tid = self.map_data[layer][y][x][0]
             if tid != 0 and check_collision(tid):
+                # 예외 타일(이동 가능) 체크
                 if tid not in BED_TILES and tid not in HIDEABLE_TILES and tid != 5310005:
                     is_blocked = True
                     break
-        
-        self.collision_cache[z][y][x] = is_blocked
+            
+        self.collision_cache[y][x] = is_blocked
 
-    def check_any_collision(self, gx, gy, z=0):
-        # [Engine] 3D 충돌 체크
-        # 1. 맵 범위 밖
-        if not (0 <= gx < self.width and 0 <= gy < self.height): return True
-        # 2. 해당 층이 없으면? (낙하 로직이 없다면 이동 불가로 처리하거나, 1층이면 허용 등 정책 필요)
-        # 여기서는 "없는 층 = 허공 = 이동 불가"로 가정하거나 "데이터 없으면 통과"로 할 수 있음.
-        # 안전하게: 층 데이터가 없으면 충돌은 아님 (단, 바닥이 없으면 추락해야 함 -> 이는 물리엔진 영역)
-        if not (0 <= z < len(self.layers)): return False
-        
-        return self.collision_cache[z][gy][gx]
-
-    def create_default_map(self):
-        self.width, self.height = 40, 30
-        self.layers = []
-        self._ensure_z_layer(0) # 1층(Z=0) 생성
-        
-        # 기본 잔디 깔기 (Z=0)
-        for y in range(self.height):
-            for x in range(self.width): 
-                self.set_tile(x, y, 1110000, z=0)
-        
-        # 테두리 벽
-        for x in range(self.width):
-            self.set_tile(x, 0, 3220000, z=0); self.set_tile(x, self.height-1, 3220000, z=0)
-        for y in range(self.height):
-            self.set_tile(0, y, 3220000, z=0); self.set_tile(self.width-1, y, 3220000, z=0)
-
-        self.zone_map = [[0 for _ in range(self.width)] for _ in range(self.height)]
-        self.build_collision_cache()
-
+    # [최적화] 전체 맵 로드 시 충돌 맵 전체 빌드
     def build_collision_cache(self):
-        self.collision_cache = []
-        for z in range(len(self.layers)):
-            self.collision_cache.append([[False for _ in range(self.width)] for _ in range(self.height)])
-            for y in range(self.height):
-                for x in range(self.width):
-                    self._update_collision_at(x, y, z)
+        self.collision_cache = [[False for _ in range(self.width)] for _ in range(self.height)]
+        for y in range(self.height):
+            for x in range(self.width):
+                self._update_collision_at(x, y)
+
+    def get_spawn_points(self, zone_id=1):
+        points = []
+        for y in range(self.height):
+            for x in range(self.width):
+                if self.zone_map[y][x] == zone_id:
+                    if not self.check_any_collision(x, y):
+                        points.append((x * TILE_SIZE, y * TILE_SIZE))
+        return points
+
+    def check_any_collision(self, gx, gy):
+        # [최적화] 캐시된 2차원 배열 조회로 대체 (O(1))
+        # [수정] 맵 밖은 이동 불가(True)로 처리해야 함
+        if not (0 <= gx < self.width and 0 <= gy < self.height):
+            return True 
+        
+        return self.collision_cache[gy][gx]
+
+    def update_doors(self, dt, entities):
+        now = pygame.time.get_ticks()
+        to_close = []
+        
+        # [최적화] 살아있는 엔티티의 Rect만 미리 계산 (배치 처리)
+        # collidelist 사용을 위해 Rect 리스트 생성
+        active_rects = [ent.rect.inflate(-15, -15) for ent in entities if ent.alive]
+        
+        for (gx, gy), open_time in list(self.open_doors.items()):
+            if now < open_time + 5000: continue 
+
+            door_rect = pygame.Rect(gx * TILE_SIZE, gy * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+            
+            # [최적화] 파이썬 루프 대신 C로 구현된 collidelist 사용
+            # 충돌하는 엔티티가 하나라도 있으면 닫지 않음
+            if door_rect.collidelist(active_rects) != -1:
+                continue
+            
+            to_close.append((gx, gy))
+        
+        for (gx, gy) in to_close:
+            self.close_door(gx, gy)
+
+    def _find_state_tile(self, current_tid, find_str, replace_str):
+        if current_tid not in TILE_DATA: return None
+        current_name = TILE_DATA[current_tid]['name']
+        
+        target_name = current_name.replace(find_str, replace_str)
+        
+        if target_name in self.name_to_tid:
+            return self.name_to_tid[target_name]
+
+        korean_map = {"Closed": "닫힘", "Open": "열림", "Locked": "잠김"}
+        
+        if find_str in korean_map and replace_str in korean_map:
+            k_find = korean_map[find_str]
+            k_replace = korean_map[replace_str]
+            target_name_fixed = target_name.replace(k_find, k_replace)
+            if target_name_fixed in self.name_to_tid:
+                return self.name_to_tid[target_name_fixed]
+                
+        return None
+
+    def open_door(self, gx, gy, layer='object'):
+        tid, rot = self.get_tile_full(gx, gy, layer)
+        target_tid = self._find_state_tile(tid, "Closed", "Open")
+        if not target_tid:
+            target_tid = self._find_state_tile(tid, "Locked", "Open")
+            
+        if target_tid:
+            self.set_tile(gx, gy, target_tid, rotation=rot, layer=layer)
+            self.open_doors[(gx, gy)] = pygame.time.get_ticks()
+
+    def close_door(self, gx, gy, layer='object'):
+        tid, rot = self.get_tile_full(gx, gy, layer)
+        target_tid = self._find_state_tile(tid, "Open", "Closed")
+        
+        if target_tid:
+            self.set_tile(gx, gy, target_tid, rotation=rot, layer=layer)
+            if (gx, gy) in self.open_doors: del self.open_doors[(gx, gy)]
+
+    def lock_door(self, gx, gy, layer='object'):
+        tid, rot = self.get_tile_full(gx, gy, layer)
+        target_tid = self._find_state_tile(tid, "Closed", "Locked")
+        
+        if target_tid:
+            self.set_tile(gx, gy, target_tid, rotation=rot, layer=layer)
+            return True
+        return False
+
+    def unlock_door(self, gx, gy, layer='object'):
+        tid, rot = self.get_tile_full(gx, gy, layer)
+        target_tid = self._find_state_tile(tid, "Locked", "Closed")
+        
+        if target_tid:
+            self.set_tile(gx, gy, target_tid, rotation=rot, layer=layer)
+            return True
+        return False
 
     def load_map(self, filename="map.json"):
         if not os.path.exists(filename): self.create_default_map(); return True
         try:
             with open(filename, 'r', encoding='utf-8') as f: data = json.load(f)
-            self.width = data.get('width', 50)
-            self.height = data.get('height', 50)
+            self.width, self.height = data.get('width', 50), data.get('height', 50)
             
-            self.layers = []
+            # 맵 데이터 초기화
+            for k in self.map_data:
+                self.map_data[k] = [[(0, 0) for _ in range(self.width)] for _ in range(self.height)]
             
-            # [Migration] 데이터 구조 확인
-            if 'layers' in data and isinstance(data['layers'], list):
-                # 신규 3D 포맷 (리스트 형태)
+            if 'layers' in data:
                 loaded_layers = data['layers']
-                for z, l_data in enumerate(loaded_layers):
-                    self._ensure_z_layer(z)
-                    for ln in ['floor', 'wall', 'object']:
-                        grid = l_data.get(ln, [])
-                        for y in range(min(len(grid), self.height)):
-                            for x in range(min(len(grid[y]), self.width)):
-                                val = grid[y][x]
-                                self.layers[z][ln][y][x] = (val, 0) if isinstance(val, int) else tuple(val)
-            else:
-                # 구버전 포맷 (단일 층) -> Z=0으로 변환
-                self._ensure_z_layer(0)
-                # 'layers' 키가 있거나 'map_data' 등 과거 필드명 호환
-                legacy = data.get('layers', data.get('map_data', {}))
                 for ln in ['floor', 'wall', 'object']:
-                    if ln in legacy:
-                        grid = legacy[ln]
+                    if ln in loaded_layers:
+                        grid = loaded_layers[ln]
                         for y in range(min(len(grid), self.height)):
                             for x in range(min(len(grid[y]), self.width)):
                                 val = grid[y][x]
-                                self.layers[0][ln][y][x] = (val, 0) if isinstance(val, int) else tuple(val)
-            
+                                # [최적화] 로드 시점에 항상 튜플로 변환하여 저장
+                                self.map_data[ln][y][x] = (val, 0) if isinstance(val, int) else tuple(val)
+            elif 'tiles' in data:
+                old_tiles = data['tiles']
+                for y in range(min(len(old_tiles), self.height)):
+                    for x in range(min(len(old_tiles[y]), self.width)):
+                        new_id = NEW_ID_MAP.get(old_tiles[y][x], old_tiles[y][x])
+                        self.set_tile(x, y, new_id)
+                        
             self.zone_map = data.get('zones', [[0 for _ in range(self.width)] for _ in range(self.height)])
+            # [최적화] 맵 로드 후 캐시 생성
             self.build_collision_cache()
+            self.build_tile_cache()
             
-            # 스폰 포인트 갱신
             for y in range(self.height):
                 for x in range(self.width):
                     if self.zone_map[y][x] == 1: 
@@ -166,118 +227,61 @@ class MapManager:
                         break
             return True
         except Exception as e:
-            import traceback; traceback.print_exc()
-            self.create_default_map()
-            return True
+            import traceback; traceback.print_exc(); self.create_default_map(); return True
 
-    def save_map(self, filename="map.json"):
-        data = {
-            "width": self.width,
-            "height": self.height,
-            "layers": self.layers, # 3D 데이터 저장
-            "zones": self.zone_map
-        }
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(data, f)
-            
-    # [Helper Methods]
-    def is_tile_on_cooldown(self, gx, gy, z=0):
-        now = pygame.time.get_ticks()
-        if (gx, gy, z) in self.tile_cooldowns: # [수정] Z 포함
-            if now < self.tile_cooldowns[(gx, gy, z)]: return True
-            else: del self.tile_cooldowns[(gx, gy, z)]
-        return False
+    def build_tile_cache(self):
+        self.tile_cache = {}
+        for ln in ['floor', 'wall', 'object']:
+            grid = self.map_data[ln]
+            for y in range(len(grid)):
+                for x in range(len(grid[y])):
+                    tid = grid[y][x][0]
+                    if tid == 0: continue
+                    if tid not in self.tile_cache: self.tile_cache[tid] = []
+                    self.tile_cache[tid].append((x * TILE_SIZE, y * TILE_SIZE))
+        return self.tile_cache
 
-    def set_tile_cooldown(self, gx, gy, z=0, duration_ms=3000):
-        self.tile_cooldowns[(gx, gy, z)] = pygame.time.get_ticks() + duration_ms # [수정] Z 포함
-
-    def update_doors(self, dt, entities):
-        now = pygame.time.get_ticks()
-        to_close = []
-        
-        # open_doors 딕셔너리 순회
-        for key, open_time in list(self.open_doors.items()):
-            # 5초가 지나지 않았으면 패스
-            if now < open_time + 5000: continue 
-            
-            # 키 형식 확인 (x, y) 또는 (x, y, z)
-            if len(key) == 3: gx, gy, z = key
-            else: gx, gy = key; z = 0 # 구버전 호환 (Z=0 가정)
-            
-            door_rect = pygame.Rect(gx * TILE_SIZE, gy * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-            
-            # [수정] 문을 막고 있는 엔티티가 있는지 확인 (self.player 대신 entities 사용)
-            is_blocked = False
-            for ent in entities:
-                if not ent.alive: continue
-                
-                # 엔티티의 Z레벨 확인 (없으면 0)
-                ent_z = getattr(ent, 'z_level', 0)
-                
-                # 1. 같은 층(Z)에 있고
-                if ent_z == z:
-                    # 2. 문 영역과 겹쳐있다면 (약간 여유를 둠)
-                    if door_rect.colliderect(ent.rect.inflate(-15, -15)):
-                        is_blocked = True
-                        break # 하나라도 막고 있으면 닫지 않음
-            
-            # 아무도 막고 있지 않다면 닫을 목록에 추가
-            if not is_blocked:
-                to_close.append((gx, gy, z))
-        
-        # 문 닫기 실행
-        for gx, gy, z in to_close:
-            self.close_door(gx, gy, z=z) # Z 전달
-
-    def _find_state_tile(self, current_tid, find_str, replace_str):
-        if current_tid not in TILE_DATA: return None
-        current_name = TILE_DATA[current_tid]['name']
-        target_name = current_name.replace(find_str, replace_str)
-        if target_name in self.name_to_tid: return self.name_to_tid[target_name]
-        korean_map = {"Closed": "닫힘", "Open": "열림", "Locked": "잠김"}
-        if find_str in korean_map and replace_str in korean_map:
-            target_name_fixed = target_name.replace(korean_map[find_str], korean_map[replace_str])
-            if target_name_fixed in self.name_to_tid: return self.name_to_tid[target_name_fixed]
-        return None
-
-    def open_door(self, gx, gy, layer='object', z=0):
-        tid, rot = self.get_tile_full(gx, gy, z, layer)
-        target_tid = self._find_state_tile(tid, "Closed", "Open")
-        if not target_tid: target_tid = self._find_state_tile(tid, "Locked", "Open")
-        if target_tid:
-            self.set_tile(gx, gy, target_tid, z=z, rotation=rot, layer=layer)
-            self.open_doors[(gx, gy, z)] = pygame.time.get_ticks() # Z 포함하여 저장
-
-    def close_door(self, gx, gy, layer='object', z=0):
-        tid, rot = self.get_tile_full(gx, gy, z, layer)
-        target_tid = self._find_state_tile(tid, "Open", "Closed")
-        if target_tid:
-            self.set_tile(gx, gy, target_tid, z=z, rotation=rot, layer=layer)
-            if (gx, gy, z) in self.open_doors: del self.open_doors[(gx, gy, z)] # Z 포함하여 삭제
-
-    def lock_door(self, gx, gy, layer='object', z=0):
-        tid, rot = self.get_tile_full(gx, gy, z, layer)
-        target_tid = self._find_state_tile(tid, "Closed", "Locked")
-        if target_tid:
-            self.set_tile(gx, gy, target_tid, z=z, rotation=rot, layer=layer)
-            return True
-        return False
-
-    def unlock_door(self, gx, gy, layer='object', z=0):
-        tid, rot = self.get_tile_full(gx, gy, z, layer)
-        target_tid = self._find_state_tile(tid, "Locked", "Closed")
-        if target_tid:
-            self.set_tile(gx, gy, target_tid, z=z, rotation=rot, layer=layer)
-            return True
-        return False
-        
-    def get_spawn_points(self, zone_id=1):
-        points = []
-        # 현재는 Z=0 스폰 포인트만 검색
+    def create_default_map(self):
+        self.width, self.height = 40, 30
+        for k in self.map_data: self.map_data[k] = [[(0,0) for _ in range(self.width)] for _ in range(self.height)]
         for y in range(self.height):
-            for x in range(self.width):
-                if self.zone_map[y][x] == zone_id:
-                    if not self.check_any_collision(x, y, z=0):
-                        points.append((x * TILE_SIZE, y * TILE_SIZE))
-        return points
+            for x in range(self.width): self.set_tile(x, y, 1110000)
+        for x in range(self.width):
+            self.set_tile(x, 0, 3220000); self.set_tile(x, self.height-1, 3220000)
+        for y in range(self.height):
+            self.set_tile(0, y, 3220000); self.set_tile(self.width-1, y, 3220000)
+            
+        self.zone_map = [[0 for _ in range(self.width)] for _ in range(self.height)]
+        for y in range(2, 5):
+            for x in range(2, 5): self.zone_map[y][x] = 1
+        self.open_doors = {}
+        self.build_tile_cache()
+        self.build_collision_cache() # [최적화]
 
+    def is_tile_on_cooldown(self, gx, gy):
+        now = pygame.time.get_ticks()
+        if (gx, gy) in self.tile_cooldowns:
+            if now < self.tile_cooldowns[(gx, gy)]: return True
+            else: del self.tile_cooldowns[(gx, gy)]
+        return False
+
+    def set_tile_cooldown(self, gx, gy, duration_ms=3000):
+        self.tile_cooldowns[(gx, gy)] = pygame.time.get_ticks() + duration_ms
+
+    def find_nearest_tile(self, tids, start_x, start_y):
+        """Find the nearest tile among tids from start_x, start_y using cache."""
+        best_pos = None
+        min_dist_sq = float('inf')
+        
+        if not isinstance(tids, list): tids = [tids]
+        
+        for tid in tids:
+            if tid in self.tile_cache:
+                for (tx, ty) in self.tile_cache[tid]:
+                    # 타일 중심 좌표
+                    cx, cy = tx + TILE_SIZE//2, ty + TILE_SIZE//2
+                    dist_sq = (start_x - cx)**2 + (start_y - cy)**2
+                    if dist_sq < min_dist_sq:
+                        min_dist_sq = dist_sq
+                        best_pos = (tx, ty) # Return top-left
+        return best_pos

@@ -12,70 +12,72 @@ class ActionLogic:
         self.logger = GameLogger.get_instance()
 
     def interact_tile(self, gx, gy, npcs, mode='short'):
-        pz = self.p.z_level # [수정] 플레이어의 현재 Z레벨
+        px, py = self.p.rect.centerx // TILE_SIZE, self.p.rect.centery // TILE_SIZE
+        dist = abs(px - gx) + abs(py - gy)
+        if dist != 1: return None
+
+        tid = 0; target_layer = None
+        map_mgr = self.p.map_manager
         
         if 0 <= gx < self.p.map_width and 0 <= gy < self.p.map_height:
-            # [수정] pz 전달
-            if map_mgr and map_mgr.is_tile_on_cooldown(gx, gy, pz): return "Cooldown!"
+            if map_mgr and map_mgr.is_tile_on_cooldown(gx, gy): return "Cooldown!"
             for layer in ['object', 'wall', 'floor']:
-                # [수정] get_tile_full 호출 시 pz 전달
-                val = map_mgr.get_tile_full(gx, gy, pz, layer)
+                val = map_mgr.get_tile_full(gx, gy, layer)
                 if val[0] != 0:
                     tid_check = val[0]; cat = get_tile_category(tid_check); d_val = get_tile_interaction(tid_check); func = get_tile_function(tid_check)
-                    # [수정] TILE_ID_LOCKED_CHEST는 settings에서 import
-                    if cat in [5, 9] or d_val > 0 or func in [2, 3] or tid_check == TILE_ID_LOCKED_CHEST: tid = tid_check; target_layer = layer; break
+                    if cat in [5, 9] or d_val > 0 or func in [2, 3] or tid_check == 5321025: tid = tid_check; target_layer = layer; break
 
         if tid == 0: return None
-        self.logger.info("PLAYER", f"Interact with {tid} at ({gx}, {gy}, z={pz}) Mode: {mode}")
+        self.logger.info("PLAYER", f"Interact with {tid} at ({gx}, {gy}) Mode: {mode}")
 
         if tid == VENDING_MACHINE_TID: return "OPEN_SHOP" if mode == 'short' else None
 
-        if tid == TILE_ID_LOCKED_CHEST: 
+        if tid == 5321025: 
             if mode == 'short': return "Hold 'E' to Unlock"
             elif mode == 'long':
                 if self.p.ap < 5: return "Not enough AP (5)"
-                self.p.minigame.start(random.choice(['MEMORY']), 2, lambda: self._open_chest_reward(gx, gy, pz), self.p.fail_penalty)
+                self.p.minigame.start(random.choice(['MEMORY']), 2, lambda: self._open_chest_reward(gx, gy), self.p.fail_penalty)
                 return f"Unlocking..."
 
         cat = get_tile_category(tid); d_val = get_tile_interaction(tid)
         if cat == 5:
             if d_val == 1: 
                 if mode == 'short': 
-                    map_mgr.open_door(gx, gy, pz, target_layer)
+                    map_mgr.open_door(gx, gy, target_layer)
                     return "Opened", ("CREAK", gx*TILE_SIZE, gy*TILE_SIZE, 5*TILE_SIZE, self.p.role)
                 elif mode == 'long':
                     is_inside = (self.p.zone_map[py][px] in INDOOR_ZONES)
                     if is_inside or self.p.inventory.get('KEY', 0) > 0 or self.p.inventory.get('MASTER_KEY', 0) > 0:
                         if self.p.ap < 5: return "Not enough AP (5)"
                         if not is_inside and self.p.inventory.get('KEY', 0) > 0: self.p.inventory['KEY'] -= 1
-                        self.p.try_spend_ap(5); map_mgr.lock_door(gx, gy, pz, target_layer)
+                        self.p.try_spend_ap(5); map_mgr.lock_door(gx, gy, target_layer)
                         return "Locked Door", ("CLICK", gx*TILE_SIZE, gy*TILE_SIZE, 3*TILE_SIZE, self.p.role)
                     else:
                         if self.p.ap < 5: return "Not enough AP (5)"
-                        self.p.minigame.start('TIMING', 2, lambda: map_mgr.lock_door(gx, gy, pz, target_layer), self.p.fail_penalty)
+                        self.p.minigame.start('TIMING', 2, lambda: map_mgr.lock_door(gx, gy, target_layer), self.p.fail_penalty)
                         return "Locking..."
             elif d_val == 3: 
                 if mode == 'short': return "It's Locked."
                 elif mode == 'long':
                     if self.p.inventory.get('KEY', 0) > 0: 
-                        self.p.inventory['KEY'] -= 1; map_mgr.unlock_door(gx, gy, pz, target_layer)
+                        self.p.inventory['KEY'] -= 1; map_mgr.unlock_door(gx, gy, target_layer)
                         return "Unlocked with Key", ("CLICK", gx*TILE_SIZE, gy*TILE_SIZE, 3*TILE_SIZE, self.p.role)
                     elif self.p.inventory.get('MASTER_KEY', 0) > 0: 
-                        map_mgr.unlock_door(gx, gy, pz, target_layer)
+                        map_mgr.unlock_door(gx, gy, target_layer)
                         return "Unlocked with Master Key", ("CLICK", gx*TILE_SIZE, gy*TILE_SIZE, 3*TILE_SIZE, self.p.role)
                     else:
                         if "Glass" in get_tile_name(tid): return "Cannot Pick Lock!"
                         if self.p.ap < 5: return "Not enough AP (5)"
-                        self.p.minigame.start('LOCKPICK', 3, lambda: map_mgr.unlock_door(gx, gy, pz, target_layer), self.p.fail_penalty)
+                        self.p.minigame.start('LOCKPICK', 3, lambda: map_mgr.unlock_door(gx, gy, target_layer), self.p.fail_penalty)
                         return "Picking Lock..."
             elif "Open" in get_tile_name(tid):
-                if mode == 'short': map_mgr.close_door(gx, gy, pz, target_layer); return "Closed", ("SLAM", gx*TILE_SIZE, gy*TILE_SIZE, 6*TILE_SIZE, self.p.role)
+                if mode == 'short': map_mgr.close_door(gx, gy, target_layer); return "Closed", ("SLAM", gx*TILE_SIZE, gy*TILE_SIZE, 6*TILE_SIZE, self.p.role)
 
         if mode == 'short':
             if self.p.role == "MAFIA" and self.p.current_phase_ref == "NIGHT":
                  cat = get_tile_category(tid)
                  if cat in [3, 5, 6]:
-                     self.p.minigame.start('MASHING', 2, lambda: self.do_break(gx, gy, pz), self.p.fail_penalty)
+                     self.p.minigame.start('MASHING', 2, lambda: self.do_break(gx, gy), self.p.fail_penalty)
                      return "Breaking...", ("BANG!", gx*TILE_SIZE, gy*TILE_SIZE, 12*TILE_SIZE, self.p.role)
 
             job_key = self.p.role if self.p.role == "DOCTOR" else self.p.sub_role
@@ -85,12 +87,12 @@ class ActionLogic:
                     m_type = MINIGAME_MAP[job_key].get(target_idx, 'MASHING')
                     next_t = seq[(target_idx + 1) % len(seq)]; is_final = (target_idx == len(seq) - 1)
                     if self.p.ap < 10: return "Not enough AP (10)"
-                    self.p.minigame.start(m_type, 1, lambda: self.work_complete(gx*TILE_SIZE, gy*TILE_SIZE, pz, next_t, is_final), self.p.fail_penalty)
+                    self.p.minigame.start(m_type, 1, lambda: self.work_complete(gx*TILE_SIZE, gy*TILE_SIZE, next_t, is_final), self.p.fail_penalty)
                     return f"Working ({m_type})..."
                 elif tid in seq: return "Not today's task."
         return None
 
-    def _open_chest_reward(self, gx, gy, gz):
+    def _open_chest_reward(self, gx, gy):
         self.p.try_spend_ap(5)
         roll = random.random(); cumulative = 0.0; selected_reward = None
         for rate in TREASURE_CHEST_RATES:
@@ -105,18 +107,18 @@ class ActionLogic:
             item = random.choice(selected_reward['items']); self.p.inventory[item] = self.p.inventory.get(item, 0) + 1
             msg = selected_reward['msg'].format(item=ITEMS[item]['name'])
             
-        if self.p.map_manager: self.p.map_manager.set_tile(gx, gy, TILE_ID_OPEN_CHEST, z=gz, layer='object')
+        if self.p.map_manager: self.p.map_manager.set_tile(gx, gy, 5310025, layer='object')
         self.p.add_popup(msg, (255, 215, 0))
 
-    def work_complete(self, px, py, pz, next_tile, reward=False):
+    def work_complete(self, px, py, next_tile, reward=False):
         self.p.try_spend_ap(10); gx, gy = px // TILE_SIZE, py // TILE_SIZE
-        if self.p.sub_role == 'FARMER' and next_tile is not None: self.p.map_manager.set_tile(gx, gy, next_tile, z=pz)
-        if self.p.map_manager: self.p.map_manager.set_tile_cooldown(gx, gy, pz, 3000)
+        if self.p.sub_role == 'FARMER' and next_tile is not None: self.p.map_manager.set_tile(gx, gy, next_tile)
+        if self.p.map_manager: self.p.map_manager.set_tile_cooldown(gx, gy, 3000)
         self.p.coins += 1; self.p.daily_work_count += 1
 
-    def do_break(self, px, py, pz):
+    def do_break(self, px, py):
         gx, gy = (px, py) if isinstance(px, int) and px < self.p.map_width else (px // TILE_SIZE, py // TILE_SIZE)
-        if self.p.try_spend_ap(2): self.p.map_manager.set_tile(gx, gy, TILE_ID_BROKEN_WALL, z=pz)
+        if self.p.try_spend_ap(2): self.p.map_manager.set_tile(gx, gy, 5310005)
 
     def do_attack(self, target):
         if not self.p.alive or self.p.role == "SPECTATOR": return None

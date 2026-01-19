@@ -14,9 +14,8 @@ class Entity:
         self.color = (255, 255, 255)
 
         self.map_data = map_data
-        # [Safety] 초기화 시 None이면 0으로 설정 (map_manager가 우선하도록 변경)
-        self.map_width = map_width if map_width is not None else 0
-        self.map_height = map_height if map_height is not None else 0
+        self.map_width = map_width
+        self.map_height = map_height
         self.zone_map = zone_map
         self.map_manager = map_manager
 
@@ -69,7 +68,7 @@ class Entity:
         self.device_on = False
         self.device_battery = 100.0
         self.powerbank_uses = 0
-        self.z_level = 0 # [추가] 현재 위치한 층 (0: 1층, 1: 2층 ...)
+
 
         self.popups = []
 
@@ -81,12 +80,19 @@ class Entity:
             'timer': pygame.time.get_ticks() + 1500
         })
 
+    # [추가] 경찰이 확인하는 공개 외형 정보
     def is_visible_villain(self, phase):
+        """
+        현재 페이즈에 이 엔티티가 '빌런의 모습'을 하고 있는지 반환합니다.
+        마피아는 밤/새벽에 '작업복(빌런 룩)'으로 자동 환복한다고 가정합니다.
+        """
         if self.role == "MAFIA" and phase in ['NIGHT', 'DAWN']:
             return True
         return False
 
     def morning_process(self):
+        """아침마다 상태 리셋 (하위 클래스에서 호출 필요)"""
+
         for k in self.buffs: self.buffs[k] = False
         self.hp = min(self.max_hp, self.hp + 1)
 
@@ -101,6 +107,7 @@ class Entity:
     def take_damage(self, amount):
         if not self.alive: return "ALREADY_DEAD"
         if self.role == "POLICE": return "IMMUNE"
+
 
         if self.inventory.get('ARMOR', 0) > 0:
             self.inventory['ARMOR'] -= 1
@@ -140,6 +147,7 @@ class Entity:
             return True
 
     def use_item(self, item_key):
+        """[Ver 10.0] 공통 아이템 사용 로직"""
         if not self.alive: return False
         if self.inventory.get(item_key, 0) <= 0: return False
 
@@ -201,44 +209,31 @@ class Entity:
 
         if self.hidden_in_solid: return
 
-        # [수정] 맵 크기 안전하게 가져오기 (MapManager 우선 사용)
-        current_map_w = self.map_manager.width if self.map_manager else self.map_width
-        current_map_h = self.map_manager.height if self.map_manager else self.map_height
-        
-        # 만약 여전히 None이거나 0이면 기본값 사용 (안전장치)
-        if not current_map_w: current_map_w = 100
-        if not current_map_h: current_map_h = 100
-
         # 충돌 검사 범위 계산
         start_gx = max(0, self.rect.left // TILE_SIZE)
-        end_gx = min(current_map_w, (self.rect.right // TILE_SIZE) + 1)
+        end_gx = min(self.map_width, (self.rect.right // TILE_SIZE) + 1)
         start_gy = max(0, self.rect.top // TILE_SIZE)
-        end_gy = min(current_map_h, (self.rect.bottom // TILE_SIZE) + 1)
+        end_gy = min(self.map_height, (self.rect.bottom // TILE_SIZE) + 1)
 
-        # 캐시 조회용 변수
+        # [최적화] 캐시 조회용 변수 미리 할당
         collision_cache = getattr(self.map_manager, 'collision_cache', None)
 
         for y in range(start_gy, end_gy):
             for x in range(start_gx, end_gx):
                 is_blocking = False
                 
-                # [Z축 적용] 캐시 확인
-                if collision_cache and self.z_level < len(collision_cache):
-                    # 범위 안전 체크
-                    if 0 <= y < len(collision_cache[self.z_level]) and 0 <= x < len(collision_cache[self.z_level][0]):
-                        if collision_cache[self.z_level][y][x]:
-                            is_blocking = True
+                # [핵심 최적화] 복잡한 타일 조회 대신 캐시된 불리언 값(True/False)만 확인
+                if collision_cache:
+                    if collision_cache[y][x]:
+                        is_blocking = True
                 else:
                     # 백업 로직
                     tids_to_check = []
                     if self.map_manager:
                         for layer in ['wall', 'object']:
-                            val = self.map_manager.get_tile_full(x, y, self.z_level, layer)
+                            val = self.map_manager.get_tile_full(x, y, layer)
                             if val[0] != 0: tids_to_check.append(val[0])
-                    elif self.map_data:
-                        # 2D 맵 데이터 폴백
-                        if 0 <= y < len(self.map_data) and 0 <= x < len(self.map_data[0]):
-                            tids_to_check.append(self.map_data[y][x])
+                    else: tids_to_check.append(self.map_data[y][x])
 
                     for tid in tids_to_check:
                         if check_collision(tid):
@@ -246,6 +241,7 @@ class Entity:
                                 is_blocking = True; break
 
                 if is_blocking:
+                    # [최적화] Rect 객체 생성 없이 좌표 비교로 충돌 해결
                     tile_left = x * TILE_SIZE
                     tile_top = y * TILE_SIZE
                     tile_right = tile_left + TILE_SIZE
@@ -261,13 +257,9 @@ class Entity:
                         
                         self.pos_x, self.pos_y = float(self.rect.x), float(self.rect.y)
 
-        # [수정] 맵 밖으로 나가지 못하게 처리 (Safe Bounds)
-        map_w_px = current_map_w * TILE_SIZE
-        map_h_px = current_map_h * TILE_SIZE
-        
+        map_w_px, map_h_px = self.map_width * TILE_SIZE, self.map_height * TILE_SIZE
         if self.rect.left < 0: self.rect.left = 0
         elif self.rect.right > map_w_px: self.rect.right = map_w_px
         if self.rect.top < 0: self.rect.top = 0
         elif self.rect.bottom > map_h_px: self.rect.bottom = map_h_px
-        
         self.pos_x, self.pos_y = self.rect.x, self.rect.y

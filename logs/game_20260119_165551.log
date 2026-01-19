@@ -1,0 +1,12 @@
+2026-01-19 16:55:51,568 - [INFO] - [DATA] Loaded 17 items.
+2026-01-19 16:55:51,569 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-19 16:55:51,569 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-19 16:55:51,801 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-19 16:55:51,840 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-19 16:55:51,887 - [INFO] - [DATA] Loaded 17 items.
+2026-01-19 16:55:51,887 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-19 16:55:51,887 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-19 16:55:53,860 - [INFO] - [PLAY] Entering PlayState...
+2026-01-19 16:55:53,873 - [INFO] - [PLAYER] Initialized at (1568, 1568) Role: CITIZEN
+2026-01-19 16:55:53,874 - [INFO] - [PLAYER] Role changed to CITIZEN (MINER)
+2026-01-19 16:56:04,678 - [INFO] - [SYSTEM] Engine Shutting Down

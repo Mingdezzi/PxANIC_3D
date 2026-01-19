@@ -58,27 +58,6 @@ class InventoryLogic:
             return ("Used " + ITEMS[item_key]['name'], (s_type, self.p.rect.centerx, self.p.rect.centery, 4 * TILE_SIZE, self.p.role))
         return False
 
-    def pick_up_item(self):
-        if not self.p.alive: return None
-        if not hasattr(self.p.game.world, 'items'): return None # world에 items가 없으면 리턴
-
-        nearby_items = []
-        for item in self.p.game.world.items: # item 객체들이 world에 있다고 가정
-            # [수정] Z축 일치 여부 확인
-            if getattr(item, 'z_level', 0) != self.p.z_level:
-                continue
-                
-            dist = math.hypot(item.x - self.p.rect.centerx, item.y - self.p.rect.centery)
-            if dist < TILE_SIZE * 1.5: # 1.5 타일 반경 내 아이템
-                nearby_items.append(item)
-        
-        if nearby_items:
-            closest_item = min(nearby_items, key=lambda item: math.hypot(item.x - self.p.rect.centerx, item.y - self.p.rect.centery))
-            self.p.inventory[closest_item.item_key] = self.p.inventory.get(closest_item.item_key, 0) + 1
-            self.p.game.world.items.remove(closest_item)
-            return f"Picked up {ITEMS[closest_item.item_key]['name']}!"
-        return None
-
     def buy_item(self, item_key):
         if self.p.role == "SPECTATOR": return
         if item_key in ITEMS:

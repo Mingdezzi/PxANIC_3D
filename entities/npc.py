@@ -96,7 +96,6 @@ class Dummy(Entity):
     def morning_process(self):
         if not self.alive: return
         self.morph_active = False
-        self.z_level = 0 # [추가] 복층 리셋
         gx, gy = int(self.rect.centerx // TILE_SIZE), int(self.rect.centery // TILE_SIZE)
         is_indoors = False
         if 0 <= gx < self.map_width and 0 <= gy < self.map_height:
@@ -152,16 +151,11 @@ class Dummy(Entity):
             return False
 
         if self.chase_target and self.chase_target.alive and not self.chase_target.is_hiding:
-            # [추가] Z-Level 체크
-            if self.chase_target.z_level == self.z_level:
-                if self.has_line_of_sight(self.chase_target): return True
+            if self.has_line_of_sight(self.chase_target): return True
         
         # [핵심 수정] "마피아인가?"(신상조회) -> "빌런의 모습인가?"(외형관찰) 로 변경
         for t in bb.get('targets', []):
             if t != self and t.alive:
-                # [추가] 같은 층에 있는 대상만 감지
-                if t.z_level != self.z_level: continue
-
                 is_villain_look = t.is_visible_villain(current_phase)
                 
                 if (is_villain_look and self.has_line_of_sight(t)) or (self.suspicion_meter.get(t.name, 0) >= 100):
@@ -172,15 +166,10 @@ class Dummy(Entity):
 
     def mafia_scan_targets(self, entity, bb):
         if bb.get('phase') != 'NIGHT': return False
-        if self.chase_target and self.chase_target.alive:
-             if self.chase_target.z_level == self.z_level and self.has_line_of_sight(self.chase_target): return True
-             
+        if self.chase_target and self.chase_target.alive and self.has_line_of_sight(self.chase_target): return True
         visible_victims = []
         for t in bb.get('targets', []):
             if t != self and t.alive and t.role not in ["MAFIA", "SPECTATOR"]:
-                # [추가] 같은 층에 있는 대상만 감지
-                if t.z_level != self.z_level: continue
-
                 if self.has_line_of_sight(t) and not t.is_hiding:
                     dist = math.sqrt((self.rect.centerx - t.rect.centerx)**2 + (self.rect.centery - t.rect.centery)**2)
                     visible_victims.append((dist, t))
@@ -194,12 +183,8 @@ class Dummy(Entity):
         if self.investigate_pos: return True
         noise = bb.get('noise_list', [])
         if noise:
-            # [수정] 같은 층에서 발생한 소리만 감지
-            # 소리 정보에 z축이 포함되어 있다고 가정 (x, y, rad, role, z)
-            z_noises = [n for n in noise if len(n) < 5 or n[4] == self.z_level]
-            if z_noises:
-                z_noises.sort(key=lambda n: (self.rect.centerx-n[0])**2 + (self.rect.centery-n[1])**2)
-                self.investigate_pos = (z_noises[0][0], z_noises[0][1]); return True
+            noise.sort(key=lambda n: (self.rect.centerx-n[0])**2 + (self.rect.centery-n[1])**2)
+            self.investigate_pos = (noise[0][0], noise[0][1]); return True
         return False
 
     def check_danger(self, entity, bb):
@@ -324,9 +309,8 @@ class Dummy(Entity):
     def _validate_environment(self):
         gx = int(self.rect.centerx // TILE_SIZE); gy = int(self.rect.centery // TILE_SIZE)
         if not (0 <= gx < self.map_width and 0 <= gy < self.map_height): return
-        # [수정] 현재 층 타일 정보 조회
-        tid_obj = self.map_manager.get_tile(gx, gy, self.z_level, 'object') if self.map_manager else 0
-        tid_floor = self.map_manager.get_tile(gx, gy, self.z_level, 'floor') if self.map_manager else 0
+        tid_obj = self.map_manager.get_tile(gx, gy, 'object') if self.map_manager else 0
+        tid_floor = self.map_manager.get_tile(gx, gy, 'floor') if self.map_manager else 0
         zone_id = self.zone_map[gy][gx]; is_hiding_tile = (tid_obj in HIDEABLE_TILES) or (tid_floor in HIDEABLE_TILES)
         is_resting_tile = (tid_obj in BED_TILES); is_indoors = (zone_id in INDOOR_ZONES)
         if self.is_moving:
@@ -338,291 +322,6 @@ class Dummy(Entity):
             elif self.hiding_type == 2 and not (is_indoors or is_resting_tile): self.is_hiding = False; self.hiding_type = 0
 
     def update(self, phase, player, npcs, is_mafia_frozen, noise_list, day_count, bloody_footsteps, siren_timer=0):
-        if not self.alive: return None
-        self._validate_environment()
-        now = pygame.time.get_ticks(); self.check_stat_changes()
-        
-        # [Sync Logic] Only Master updates logic
-        if self.is_master:
-            if self.role == "MAFIA" and is_mafia_frozen:
-                self.is_moving = False
-                return None
-            if self.is_unlocking:
-                if now >= self.unlock_finish_timer:
-                    self.is_unlocking = False
-                    if self.path:
-                        nx, ny = self.path[0]
-                        if self.map_manager: self.map_manager.unlock_door(nx, ny, self.z_level); self.add_popup("Unlocked!")
-                    return None
-                return BTState.RUNNING
-            if self.pending_path is not None:
-                if not self.is_hiding: self.path = self.pending_path
-                self.pending_path = None; self.is_pathfinding = False
-            
-            blackboard = {'phase': phase, 'player': player, 'npcs': npcs, 'targets': npcs + [player], 'noise_list': noise_list, 'bloody_footsteps': bloody_footsteps, 'day_count': day_count, 'is_mafia_frozen': is_mafia_frozen}
-            
-            # [Optimization] Throttled AI
-            self.ai_timer -= 1
-            if self.ai_timer <= 0:
-                self.ai_timer = 10
-                result = self.tree.tick(self, blackboard)
-                if isinstance(result, str): return result
-            
-            return self.process_movement(phase, npcs, slow_down=is_mafia_frozen if self.role == "MAFIA" else False)
-        
-        else:
-            # [Slave Mode] Just interpolate position (No AI)
-            self._update_slave_movement()
-            return None
-
-    def _update_slave_movement(self):
-        # Simple lerp to target position
-        dx = self.target_pos[0] - self.pos_x
-        dy = self.target_pos[1] - self.pos_y
-        dist = math.sqrt(dx**2 + dy**2)
-        
-        if dist > 1.0:
-            move_x = dx * self.lerp_factor
-            move_y = dy * self.lerp_factor
-            self.pos_x += move_x
-            self.pos_y += move_y
-            self.rect.x = round(self.pos_x)
-            self.rect.y = round(self.pos_y)
-            
-            # Update facing
-            if abs(dx) > abs(dy):
-                self.facing_dir = (1, 0) if dx > 0 else (-1, 0)
-            else:
-                self.facing_dir = (0, 1) if dy > 0 else (0, -1)
-            self.is_moving = True
-        else:
-            self.is_moving = False
-
-    def sync_state(self, x, y, hp, ap, role, is_moving, facing):
-        """Called by network manager to update slave state"""
-        self.target_pos = (x, y)
-        # If distance is too big, teleport
-        if math.hypot(x - self.pos_x, y - self.pos_y) > TILE_SIZE * 5:
-            self.pos_x, self.pos_y = x, y
-            self.rect.x, self.rect.y = int(x), int(y)
-            
-        self.hp = hp
-        self.ap = ap
-        # Role shouldn't change often but sync it anyway if needed
-        self.is_moving = is_moving
-        self.facing_dir = facing
-
-    def set_destination(self, tx, ty, reason="Unknown"):
-        if self.is_hiding: self.is_hiding = False; self.hiding_type = 0
-        tgx, tgy = int(tx // TILE_SIZE), int(ty // TILE_SIZE)
-        if self.path and self.current_path_target == (tgx, tgy): return True
-        if self.is_pathfinding: return False
-        
-        # [수정] 현재 경로가 없고 멈춰있는 상태라면 쿨타임 무시 (즉시 반응)
-        now = pygame.time.get_ticks()
-        if self.path or self.is_moving:
-            if now < self.path_cooldown: return False
-            
-        self.path_cooldown = now + 500
-        self.is_pathfinding = True
-        
-        # [수정] 스레드 안전성 확보: 현재 위치를 미리 계산하여 전달
-        start_gx = int(self.rect.centerx // TILE_SIZE)
-        start_gy = int(self.rect.centery // TILE_SIZE)
-        
-        thread = threading.Thread(target=self._threaded_calculate_path, args=(start_gx, start_gy, tgx, tgy, reason))
-        thread.daemon = True; thread.start(); return True
-
-    def _threaded_calculate_path(self, start_gx, start_gy, target_gx, target_gy, reason):
-        try:
-            # start_gx, start_gy는 인자로 받음 (self.rect 접근 제거)
-            if (start_gx, start_gy) == (target_gx, target_gy): self.pending_path = []; return
-            open_set = []; heapq.heappush(open_set, (0, start_gx, start_gy)); came_from = {}; g_score = {(start_gx, start_gy): 0}
-            while open_set and len(came_from) < 5000:
-                _, cx, cy = heapq.heappop(open_set)
-                if (cx, cy) == (target_gx, target_gy): break
-                for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                    nx, ny = cx + dx, cy + dy
-                    if 0 <= nx < self.map_width and 0 <= ny < self.map_height:
-                        tid_obj = self.map_manager.get_tile(nx, ny, self.z_level, 'object') if self.map_manager else 0
-                        tid_wall = self.map_manager.get_tile(nx, ny, self.z_level, 'wall') if self.map_manager else self.map_data[ny][nx]
-                        blocked = check_collision(tid_wall) or (tid_obj != 0 and check_collision(tid_obj))
-                        if get_tile_category(tid_obj) == 5: blocked = False
-                        if (nx, ny) == (target_gx, target_gy): blocked = False
-                        if not blocked:
-                            new_g = g_score[(cx, cy)] + 1
-                            if (nx, ny) not in g_score or new_g < g_score[(nx, ny)]:
-                                g_score[(nx, ny)] = new_g; priority = new_g + abs(target_gx - nx) + abs(target_gy - ny)
-                                heapq.heappush(open_set, (priority, nx, ny)); came_from[(nx, ny)] = (cx, cy)
-            if (target_gx, target_gy) in came_from:
-                path = []; curr = (target_gx, target_gy)
-                while curr in came_from: path.append(curr); curr = came_from[curr]
-                self.pending_path = path[::-1]; self.current_path_target = (target_gx, target_gy)
-            else: self.pending_path = None; self.is_pathfinding = False
-        except: self.is_pathfinding = False
-
-    def process_movement(self, phase, npcs=None, slow_down=False):
-        if self.is_hiding: return None
-        if slow_down:
-            self.is_moving = False
-            return None
-        
-        # [New] Update Emotion State (AI)
-        if self.role == "MAFIA" and self.chase_target:
-            self.status_effects['DOPAMINE'] = True
-        else:
-            self.status_effects['DOPAMINE'] = False
-
-        now = pygame.time.get_ticks(); self.move_state, self.speed = "WALK", SPEED_WALK
-        if self.chase_target: 
-            self.move_state, self.speed = "RUN", SPEED_RUN
-            # [New] Dopamine Effect: Faster Chase
-            if self.status_effects.get('DOPAMINE'):
-                self.speed *= 1.2
-
-        if not self.path: self.is_moving = False; return None
-        ngx, ngy = self.path[0]; tid = self.map_manager.get_tile(ngx, ngy, self.z_level, 'object') if self.map_manager else 0
-        cat = get_tile_category(tid); d_val = get_tile_interaction(tid)
-        if cat == 5:
-            dist = math.sqrt((self.rect.centerx - (ngx*TILE_SIZE+16))**2 + (self.rect.centery - (ngy*TILE_SIZE+16))**2)
-            if dist < TILE_SIZE * 1.2:
-                # [New] Mafia Rage: Destroy Doors at Night
-                if self.role == "MAFIA" and phase == "NIGHT":
-                    if self.map_manager:
-                        self.map_manager.set_tile(ngx, ngy, 0, z=self.z_level, layer='object')
-                        # self.logger.info("MAFIA", "Smashed a door!")
-                    return None
-
-                if d_val == 1: self.map_manager.open_door(ngx, ngy, self.z_level); return None
-                elif d_val == 3:
-                    if self.inventory.get('KEY', 0) > 0: self.inventory['KEY'] -= 1; self.map_manager.unlock_door(ngx, ngy, self.z_level); return None
-                    elif self.role == "MAFIA": self.map_manager.set_tile(ngx, ngy, 5310005, z=self.z_level); return "MURDER_OCCURRED"
-                    elif not self.is_unlocking: self.is_unlocking = True; self.unlock_finish_timer = now + 5000; self.add_popup("Lockpicking..."); return None
-                    return None
-        target_px, target_py = ngx * TILE_SIZE + 16, ngy * TILE_SIZE + 16
-        dx, dy = target_px - self.rect.centerx, target_py - self.rect.centery; dist = math.sqrt(dx**2 + dy**2)
-        if dist < 5:
-            self.path.pop(0);
-            if not self.path: self.is_moving = False
-        else:
-            self.is_moving = True; mx, my = (dx/dist)*self.speed, (dy/dist)*self.speed
-            self.move_single_axis(mx, 0, npcs); self.move_single_axis(0, my, npcs)
-            
-            # [Optimization] Update Spatial Grid
-            if hasattr(self, 'world') and self.world.spatial_grid:
-                self.world.spatial_grid.update_entity(self)
-        return True
-
-
-    def random_move(self):
-        # [수정] 무작위 좌표 대신 '갈 수 있는 바닥' 중에서 랜덤 선택
-        target_pos = None
-        
-        if self.map_manager:
-            # 1. 캐시된 바닥 타일 중 하나를 랜덤 선택 (카테고리 1: 외부바닥, 2: 내부바닥)
-            valid_keys = [k for k in self.map_manager.tile_cache.keys() if get_tile_category(k) in [1, 2]]
-            if valid_keys:
-                rand_tid = random.choice(valid_keys)
-                if self.map_manager.tile_cache[rand_tid]:
-                    # [수정] 캐시 키 형식이 (x, y, z) 이므로 현재 z_level 필터링
-                    z_candidates = [pos for pos in self.map_manager.tile_cache[rand_tid] if len(pos) < 3 or pos[2] == self.z_level]
-                    if z_candidates:
-                        pos = random.choice(z_candidates)
-                        target_pos = (pos[0] + 16, pos[1] + 16)
-
-        # 2. 캐시가 없거나 실패하면 기존 방식대로 하되, 충돌 체크 반복
-        if not target_pos:
-            for _ in range(10): # 최대 10번 시도
-                tx = random.randint(0, self.map_width - 1)
-                ty = random.randint(0, self.map_height - 1)
-                if self.map_manager and not self.map_manager.check_any_collision(tx, ty, self.z_level):
-                    target_pos = (tx * TILE_SIZE + 16, ty * TILE_SIZE + 16)
-                    break
-        
-        if target_pos:
-            self.set_destination(target_pos[0], target_pos[1], "Random Move")
-    def find_tile(self, target_ids, sort_by_distance=True, npcs=None):
-        candidates = []; tile_cache = self.map_manager.tile_cache if self.map_manager else {}
-        for tid in target_ids:
-            if tid in tile_cache:
-                for pos in tile_cache[tid]:
-                    # [수정] Z-Level 체크
-                    if len(pos) >= 3 and pos[2] != self.z_level: continue
-                    px, py = pos[0], pos[1]
-                    dist_sq = (self.rect.centerx - px)**2 + (self.rect.centery - py)**2
-                    if dist_sq > (60 * TILE_SIZE)**2: continue
-                    neighbor = self.get_valid_neighbor(px//TILE_SIZE, py//TILE_SIZE)
-                    if neighbor: candidates.append((neighbor, dist_sq))
-        if candidates:
-            if sort_by_distance: candidates.sort(key=lambda c: c[1])
-            return candidates[0][0]
-        return None
-    def get_valid_neighbor(self, tx, ty):
-        offsets = [(0, 1), (0, -1), (1, 0), (-1, 0)]; random.shuffle(offsets)
-        for dx, dy in offsets:
-            nx, ny = tx + dx, ty + dy
-            if 0 <= nx < self.map_width and 0 <= ny < self.map_height:
-                if self.map_manager and not self.map_manager.check_any_collision(nx, ny, self.z_level): return (nx * TILE_SIZE + 16, ny * TILE_SIZE + 16)
-        return None
-    def has_line_of_sight(self, target):
-        # 1. Distance Check
-        dist = math.sqrt((self.rect.centerx - target.rect.centerx)**2 + (self.rect.centery - target.rect.centery)**2)
-        if dist >= VISION_RADIUS['DAY'] * TILE_SIZE:
-            return False
-            
-        # 2. Wall Check (Raycasting using Bresenham's Algorithm)
-        if not self.map_manager: return True
-        
-        # Start and End points in Tile Coordinates
-        x0, y0 = int(self.rect.centerx // TILE_SIZE), int(self.rect.centery // TILE_SIZE)
-        x1, y1 = int(target.rect.centerx // TILE_SIZE), int(target.rect.centery // TILE_SIZE)
-        
-        dx = abs(x1 - x0)
-        dy = abs(y1 - y0)
-        sx = 1 if x0 < x1 else -1
-        sy = 1 if y0 < y1 else -1
-        err = dx - dy
-        
-        while True:
-            # Reached target tile
-            if x0 == x1 and y0 == y1: break
-            
-            # Check for obstruction at current tile (x0, y0)
-            # Skip the starting tile (self position) to avoid self-blocking logic if slightly misaligned
-            if not (x0 == int(self.rect.centerx // TILE_SIZE) and y0 == int(self.rect.centery // TILE_SIZE)):
-                # Check bounds
-                if 0 <= x0 < self.map_width and 0 <= y0 < self.map_height:
-                    tid_wall = self.map_manager.get_tile(x0, y0, self.z_level, 'wall')
-                    tid_obj = self.map_manager.get_tile(x0, y0, self.z_level, 'object')
-                    
-                    # Check Wall Layer
-                    if tid_wall != 0 and check_collision(tid_wall):
-                        if tid_wall not in TRANSPARENT_TILES: return False
-                    
-                    # Check Object Layer
-                    if tid_obj != 0 and check_collision(tid_obj):
-                        # Allow hiding spots and transparent objects to be seen through?
-                        # Generally if it has collision, it blocks view, EXCEPT transparent ones.
-                        if tid_obj not in TRANSPARENT_TILES and tid_obj not in HIDEABLE_TILES:
-                            return False
-
-            e2 = 2 * err
-            if e2 > -dy:
-                err -= dy
-                x0 += sx
-            if e2 < dx:
-                err += dx
-                y0 += sy
-                
-        return True
-    def find_house_door(self, npcs=None):
-        candidates = []
-        for y in range(self.map_height):
-            for x in range(self.map_width):
-                if self.zone_map[y][x] in INDOOR_ZONES:
-                    tid = self.map_manager.get_tile(x, y, self.z_level, 'object') if self.map_manager else 0
-                    if get_tile_function(tid) in [2, 3]: candidates.append((x*TILE_SIZE+16, y*TILE_SIZE+16))
-        return random.choice(candidates) if candidates else None
         if not self.alive: return None
         self._validate_environment()
         now = pygame.time.get_ticks(); self.check_stat_changes()
@@ -729,9 +428,8 @@ class Dummy(Entity):
                 for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                     nx, ny = cx + dx, cy + dy
                     if 0 <= nx < self.map_width and 0 <= ny < self.map_height:
-                        # [수정] 현재 층 타일 정보 조회
-                        tid_obj = self.map_manager.get_tile(nx, ny, self.z_level, 'object') if self.map_manager else 0
-                        tid_wall = self.map_manager.get_tile(nx, ny, self.z_level, 'wall') if self.map_manager else self.map_data[ny][nx]
+                        tid_obj = self.map_manager.get_tile(nx, ny, 'object') if self.map_manager else 0
+                        tid_wall = self.map_manager.get_tile(nx, ny, 'wall') if self.map_manager else self.map_data[ny][nx]
                         blocked = check_collision(tid_wall) or (tid_obj != 0 and check_collision(tid_obj))
                         if get_tile_category(tid_obj) == 5: blocked = False
                         if (nx, ny) == (target_gx, target_gy): blocked = False
@@ -767,7 +465,7 @@ class Dummy(Entity):
                 self.speed *= 1.2
 
         if not self.path: self.is_moving = False; return None
-        ngx, ngy = self.path[0]; tid = self.map_manager.get_tile(ngx, ngy, self.z_level, 'object') if self.map_manager else 0
+        ngx, ngy = self.path[0]; tid = self.map_manager.get_tile(ngx, ngy, 'object') if self.map_manager else 0
         cat = get_tile_category(tid); d_val = get_tile_interaction(tid)
         if cat == 5:
             dist = math.sqrt((self.rect.centerx - (ngx*TILE_SIZE+16))**2 + (self.rect.centery - (ngy*TILE_SIZE+16))**2)
@@ -775,14 +473,14 @@ class Dummy(Entity):
                 # [New] Mafia Rage: Destroy Doors at Night
                 if self.role == "MAFIA" and phase == "NIGHT":
                     if self.map_manager:
-                        self.map_manager.set_tile(ngx, ngy, 0, z=self.z_level, layer='object')
+                        self.map_manager.set_tile(ngx, ngy, 0, layer='object')
                         # self.logger.info("MAFIA", "Smashed a door!")
                     return None
 
-                if d_val == 1: self.map_manager.open_door(ngx, ngy, self.z_level); return None
+                if d_val == 1: self.map_manager.open_door(ngx, ngy); return None
                 elif d_val == 3:
-                    if self.inventory.get('KEY', 0) > 0: self.inventory['KEY'] -= 1; self.map_manager.unlock_door(ngx, ngy, self.z_level); return None
-                    elif self.role == "MAFIA": self.map_manager.set_tile(ngx, ngy, 5310005, z=self.z_level); return "MURDER_OCCURRED"
+                    if self.inventory.get('KEY', 0) > 0: self.inventory['KEY'] -= 1; self.map_manager.unlock_door(ngx, ngy); return None
+                    elif self.role == "MAFIA": self.map_manager.set_tile(ngx, ngy, 5310005); return "MURDER_OCCURRED"
                     elif not self.is_unlocking: self.is_unlocking = True; self.unlock_finish_timer = now + 5000; self.add_popup("Lockpicking..."); return None
                     return None
         target_px, target_py = ngx * TILE_SIZE + 16, ngy * TILE_SIZE + 16
@@ -810,18 +508,15 @@ class Dummy(Entity):
             if valid_keys:
                 rand_tid = random.choice(valid_keys)
                 if self.map_manager.tile_cache[rand_tid]:
-                    # [수정] 현재 층의 타일만 고려 (캐시 형식이 (x, y, z) 임)
-                    z_candidates = [p for p in self.map_manager.tile_cache[rand_tid] if len(p) < 3 or p[2] == self.z_level]
-                    if z_candidates:
-                        pos = random.choice(z_candidates)
-                        target_pos = (pos[0] + 16, pos[1] + 16)
+                    rx, ry = random.choice(self.map_manager.tile_cache[rand_tid])
+                    target_pos = (rx + 16, ry + 16)
 
         # 2. 캐시가 없거나 실패하면 기존 방식대로 하되, 충돌 체크 반복
         if not target_pos:
             for _ in range(10): # 최대 10번 시도
                 tx = random.randint(0, self.map_width - 1)
                 ty = random.randint(0, self.map_height - 1)
-                if self.map_manager and not self.map_manager.check_any_collision(tx, ty, self.z_level):
+                if self.map_manager and not self.map_manager.check_any_collision(tx, ty):
                     target_pos = (tx * TILE_SIZE + 16, ty * TILE_SIZE + 16)
                     break
         

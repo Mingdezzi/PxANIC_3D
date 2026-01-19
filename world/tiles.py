@@ -901,23 +901,7 @@ HIDEABLE_TILES = [6310104, 8310208, 8320209, 8320210, 8321211, 8320212]
 # [Visibility] Transparent Tiles (Glass)
 # 3220010: Glass Wall, 3220011: Reinforced Glass
 # 5310002: Glass Door Open, 5321008: Glass Door Closed, 5323022: Glass Door Locked
-TRANSPARENT_TILES = [
-    5310005, # Broken Door (was Broken Wall in previous prompt, but 5310005 is a door)
-    3220010, # Glass Wall (유리 벽)
-    3220011, # Reinforced Glass (강화 유리)
-    5310002, # Glass Door Open (유리문 열림)
-    5321008, # Glass Door Closed (유리문 닫힘)
-    5323022  # Glass Door Locked (유리문 잠김)
-]
-
-# --- 계단 및 층간 이동 타일 정의 ---
-# 실제 맵 에디터에서 사용하는 타일 ID로 맞춰야 합니다.
-# (예시 ID이므로, 에디터에서 배치한 타일의 ID를 확인 후 변경하세요)
-STAIRS_UP_TILES = [4900001, 7310020]   # 밟으면 위층(Z+1)으로 가는 타일
-STAIRS_DOWN_TILES = [4900002, 7310021] # 밟으면 아래층(Z-1)으로 가는 타일
-
-# 플레이어가 밟으면 즉시 층이동 처리를 할 타일들
-LAYER_TRANSITION_TILES = STAIRS_UP_TILES + STAIRS_DOWN_TILES
+TRANSPARENT_TILES = [3220010, 3220011, 5310002, 5321008, 5323022]
 
 # [Data-Driven Override]
 try:
