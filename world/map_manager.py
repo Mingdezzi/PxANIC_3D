@@ -20,7 +20,7 @@ class MapManager:
         # 타일 캐시: {tid: [(x, y, z), ...]}
         self.tile_cache = {} 
         self.tile_cooldowns = {}
-        self.open_doors = {}
+        self.open_doors = {} # Key: (x, y, z), Value: open_time
         self.zone_map = []
         
         self.name_to_tid = {data['name']: tid for tid, data in TILE_DATA.items()}
@@ -181,30 +181,53 @@ class MapManager:
             json.dump(data, f)
             
     # [Helper Methods]
-    def is_tile_on_cooldown(self, gx, gy):
+    def is_tile_on_cooldown(self, gx, gy, z=0):
         now = pygame.time.get_ticks()
-        if (gx, gy) in self.tile_cooldowns:
-            if now < self.tile_cooldowns[(gx, gy)]: return True
-            else: del self.tile_cooldowns[(gx, gy)]
+        if (gx, gy, z) in self.tile_cooldowns: # [수정] Z 포함
+            if now < self.tile_cooldowns[(gx, gy, z)]: return True
+            else: del self.tile_cooldowns[(gx, gy, z)]
         return False
 
-    def set_tile_cooldown(self, gx, gy, duration_ms=3000):
-        self.tile_cooldowns[(gx, gy)] = pygame.time.get_ticks() + duration_ms
+    def set_tile_cooldown(self, gx, gy, z=0, duration_ms=3000):
+        self.tile_cooldowns[(gx, gy, z)] = pygame.time.get_ticks() + duration_ms # [수정] Z 포함
 
     def update_doors(self, dt, entities):
-        # 현재는 Z=0 문만 처리 (추후 확장 필요)
         now = pygame.time.get_ticks()
         to_close = []
-        active_rects = [ent.rect.inflate(-15, -15) for ent in entities if ent.alive]
         
-        for (gx, gy), open_time in list(self.open_doors.items()):
+        # open_doors 딕셔너리 순회
+        for key, open_time in list(self.open_doors.items()):
+            # 5초가 지나지 않았으면 패스
             if now < open_time + 5000: continue 
+            
+            # 키 형식 확인 (x, y) 또는 (x, y, z)
+            if len(key) == 3: gx, gy, z = key
+            else: gx, gy = key; z = 0 # 구버전 호환 (Z=0 가정)
+            
             door_rect = pygame.Rect(gx * TILE_SIZE, gy * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-            if door_rect.collidelist(active_rects) != -1: continue
-            to_close.append((gx, gy))
+            
+            # [수정] 문을 막고 있는 엔티티가 있는지 확인 (self.player 대신 entities 사용)
+            is_blocked = False
+            for ent in entities:
+                if not ent.alive: continue
+                
+                # 엔티티의 Z레벨 확인 (없으면 0)
+                ent_z = getattr(ent, 'z_level', 0)
+                
+                # 1. 같은 층(Z)에 있고
+                if ent_z == z:
+                    # 2. 문 영역과 겹쳐있다면 (약간 여유를 둠)
+                    if door_rect.colliderect(ent.rect.inflate(-15, -15)):
+                        is_blocked = True
+                        break # 하나라도 막고 있으면 닫지 않음
+            
+            # 아무도 막고 있지 않다면 닫을 목록에 추가
+            if not is_blocked:
+                to_close.append((gx, gy, z))
         
-        for (gx, gy) in to_close:
-            self.close_door(gx, gy)
+        # 문 닫기 실행
+        for gx, gy, z in to_close:
+            self.close_door(gx, gy, z=z) # Z 전달
 
     def _find_state_tile(self, current_tid, find_str, replace_str):
         if current_tid not in TILE_DATA: return None
@@ -223,14 +246,14 @@ class MapManager:
         if not target_tid: target_tid = self._find_state_tile(tid, "Locked", "Open")
         if target_tid:
             self.set_tile(gx, gy, target_tid, z=z, rotation=rot, layer=layer)
-            self.open_doors[(gx, gy)] = pygame.time.get_ticks()
+            self.open_doors[(gx, gy, z)] = pygame.time.get_ticks() # Z 포함하여 저장
 
     def close_door(self, gx, gy, layer='object', z=0):
         tid, rot = self.get_tile_full(gx, gy, z, layer)
         target_tid = self._find_state_tile(tid, "Open", "Closed")
         if target_tid:
             self.set_tile(gx, gy, target_tid, z=z, rotation=rot, layer=layer)
-            if (gx, gy) in self.open_doors: del self.open_doors[(gx, gy)]
+            if (gx, gy, z) in self.open_doors: del self.open_doors[(gx, gy, z)] # Z 포함하여 삭제
 
     def lock_door(self, gx, gy, layer='object', z=0):
         tid, rot = self.get_tile_full(gx, gy, z, layer)
@@ -257,3 +280,4 @@ class MapManager:
                     if not self.check_any_collision(x, y, z=0):
                         points.append((x * TILE_SIZE, y * TILE_SIZE))
         return points
+

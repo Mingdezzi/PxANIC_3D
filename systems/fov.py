@@ -16,7 +16,7 @@ class FOV:
             self.sin_table[deg] = math.sin(rad)
             self.cos_table[deg] = math.cos(rad)
         
-    def cast_rays(self, px, py, radius, direction=None, angle_width=60):
+    def cast_rays(self, px, py, radius, direction=None, angle_width=60, z_level=0):
         visible_tiles = set()
         
         cx, cy = int(px // TILE_SIZE), int(py // TILE_SIZE)
@@ -24,9 +24,20 @@ class FOV:
         
         if radius <= 0: return visible_tiles
 
+        # [수정] 맵 매니저의 Z 데이터 확인
+        if z_level < 0 or z_level >= len(self.map_manager.layers):
+            return visible_tiles # 유효하지 않은 층이면 빈 시야 반환
+
+        # 데이터 참조 가져오기 (성능을 위해 루프 밖에서 할당)
+        current_layer = self.map_manager.layers[z_level]
+        wall_data = current_layer['wall']
+        obj_data = current_layer['object']
+        zone_data = self.map_manager.zone_map
+        width, height = self.map_manager.width, self.map_manager.height # 동적 크기 참조 권장
+
         player_zone = 0
-        if 0 <= cx < self.map_width and 0 <= cy < self.map_height:
-            player_zone = self.map_manager.zone_map[cy][cx]
+        if 0 <= cx < width and 0 <= cy < height:
+            player_zone = zone_data[cy][cx]
         is_player_indoors = (player_zone in INDOOR_ZONES)
 
         max_dist_px = radius * TILE_SIZE
@@ -44,11 +55,6 @@ class FOV:
             end_angle = 360
             angle_step = 3 
 
-        wall_data = self.map_manager.map_data['wall']
-        obj_data = self.map_manager.map_data['object']
-        zone_data = self.map_manager.zone_map
-        width, height = self.map_width, self.map_height
-        
         sin_tbl = self.sin_table
         cos_tbl = self.cos_table
 
@@ -72,6 +78,7 @@ class FOV:
                 visible_tiles.add((gx, gy))
 
                 # Collision & Visibility Check
+                # [수정] 튜플 데이터 처리 (tid, rot)
                 w_val = wall_data[gy][gx]
                 tid_wall = w_val[0] if isinstance(w_val, (tuple, list)) else w_val
                 
@@ -96,28 +103,34 @@ class FOV:
                 is_target_indoors = (target_zone in INDOOR_ZONES)
                 
                 if not is_player_indoors and is_target_indoors:
-                    # Outside looking In
-                    if is_transparent:
-                        pass # Can see through glass
-                    elif is_blocking:
-                        break # Wall blocks view
-                    else:
-                        break # Floor inside is not visible unless through glass
+                    if is_transparent: pass 
+                    elif is_blocking: break 
+                    else: break 
                 
                 if is_blocking and not is_transparent:
                     break
         return visible_tiles
 
-    def get_poly_points(self, px, py, radius, direction=None, angle_width=60):
+    def get_poly_points(self, px, py, radius, direction=None, angle_width=60, z_level=0):
         points = []
         points.append((px, py)) 
 
         if radius <= 0: return points
+        
+        # [수정] Z축 데이터 참조
+        if z_level < 0 or z_level >= len(self.map_manager.layers):
+            return points
+
+        current_layer = self.map_manager.layers[z_level]
+        wall_data = current_layer['wall']
+        obj_data = current_layer['object']
+        zone_data = self.map_manager.zone_map
+        width, height = self.map_manager.width, self.map_manager.height
 
         cx, cy = int(px // TILE_SIZE), int(py // TILE_SIZE)
         player_zone = 0
-        if 0 <= cx < self.map_width and 0 <= cy < self.map_height:
-             player_zone = self.map_manager.zone_map[cy][cx]
+        if 0 <= cx < width and 0 <= cy < height:
+             player_zone = zone_data[cy][cx]
         is_player_indoors = (player_zone in INDOOR_ZONES)
 
         max_dist_px = radius * TILE_SIZE
@@ -131,11 +144,6 @@ class FOV:
             start_angle = int(center_angle - angle_width / 2)
             end_angle = int(center_angle + angle_width / 2)
             angle_step = 1
-
-        width, height = self.map_width, self.map_height
-        wall_data = self.map_manager.map_data['wall']
-        obj_data = self.map_manager.map_data['object']
-        zone_data = self.map_manager.zone_map
         
         sin_tbl = self.sin_table
         cos_tbl = self.cos_table
@@ -182,12 +190,9 @@ class FOV:
                 is_target_indoors = (target_zone in INDOOR_ZONES)
                 
                 if not is_player_indoors and is_target_indoors:
-                    if is_transparent:
-                        pass # Glass -> Continue ray
-                    elif is_blocking:
-                        is_blocking = True # Wall -> Block
-                    else:
-                        is_blocking = True # Floor inside -> Block visibility from outside
+                    if is_transparent: pass
+                    elif is_blocking: is_blocking = True 
+                    else: is_blocking = True 
                 
                 if is_blocking and not is_transparent:
                     hit_x, hit_y = nx, ny

@@ -1,55 +1,53 @@
 import pygame
-from settings import TILE_SIZE, BLOCK_HEIGHT, INDOOR_ZONES, CUSTOM_COLORS # BLOCK_HEIGHT 추가
-from colors import *
+from settings import TILE_SIZE, BLOCK_HEIGHT, TILE_STEP_Y, INDOOR_ZONES, ZONES
+
+try:
+    from colors import CUSTOM_COLORS
+except ImportError:
+    CUSTOM_COLORS = {}
+
 from world.tiles import get_texture, get_tile_category
 
 class CharacterRenderer:
+    _name_surface_cache = {}
     _sprite_cache = {}
     
     pygame.font.init()
-    NAME_FONT = pygame.font.SysFont("arial", 11, bold=True)
-    POPUP_FONT = pygame.font.SysFont("arial", 12, bold=True)
+    NAME_FONT = pygame.font.SysFont("malgungothic", 12, bold=True)
 
     RECT_BODY = pygame.Rect(4, 4, 24, 24)
     RECT_CLOTH = pygame.Rect(4, 14, 24, 14)
-    RECT_ARM_L = pygame.Rect(8, 14, 4, 14)
-    RECT_ARM_R = pygame.Rect(20, 14, 4, 14)
-    RECT_HAT_TOP = pygame.Rect(2, 2, 28, 5)
-    RECT_HAT_RIM = pygame.Rect(6, 0, 20, 7)
-
-    _name_surface_cache = {}
 
     @classmethod
     def clear_cache(cls):
         cls._sprite_cache.clear()
         cls._name_surface_cache.clear()
 
-    @classmethod
-    def _get_cache_key(cls, entity, is_highlighted):
-        skin_idx = entity.custom.get('skin', 0)
-        cloth_idx = entity.custom.get('clothes', 0)
-        hat_idx = entity.custom.get('hat', 0)
-        facing = getattr(entity, 'facing_dir', (0, 1))
-        return (skin_idx, cloth_idx, hat_idx, entity.role, entity.sub_role, facing, is_highlighted)
-
     @staticmethod
-    def draw_entity(screen, entity, camera_x, camera_y, viewer_role="PLAYER", current_phase="DAY", viewer_device_on=False):
+    def draw_entity(screen, entity, camera_x, camera_y, role_name="CITIZEN", phase="DAY", device_on=False):
         if not entity.alive: return
-        # [수정] Z-Level 반영하여 Y좌표 보정
+
+        # [핵심] 캐릭터 위치 Y축 압축 (Isometric Projection)
+        # 논리적 좌표(rect.y)를 시각적 좌표(visual_y)로 변환
+        # TILE_SIZE(32) -> TILE_STEP_Y(24) 비율로 압축
+        visual_entity_y = (entity.rect.y / TILE_SIZE) * TILE_STEP_Y
+        
         draw_x = entity.rect.x - camera_x
-        draw_y = entity.rect.y - camera_y - (entity.z_level * BLOCK_HEIGHT)
+        draw_y = visual_entity_y - camera_y - (entity.z_level * BLOCK_HEIGHT)
+        
         screen_w, screen_h = screen.get_width(), screen.get_height()
-        if not (-50 < draw_x < screen_w + 50 and -50 < draw_y < screen_h + 50): return
+
+        if not (-100 < draw_x < screen_w + 100 and -100 < draw_y < screen_h + 100): return
 
         alpha = 255
         is_highlighted = False
-        if viewer_role == "MAFIA" and viewer_device_on:
+        if role_name == "MAFIA" and device_on:
             is_highlighted = True; alpha = 255 
 
         if entity.is_hiding and not is_highlighted:
             is_visible = False
-            if getattr(entity, 'is_player', False) or entity.name == "Player 1": is_visible, alpha = True, 120
-            elif viewer_role == "SPECTATOR": is_visible, alpha = True, 120
+            if getattr(entity, 'is_player', False) or entity.name == "Player": is_visible, alpha = True, 120
+            elif role_name == "SPECTATOR": is_visible, alpha = True, 120
             if not is_visible: return
 
         cache_key = CharacterRenderer._get_cache_key(entity, is_highlighted)
@@ -57,10 +55,10 @@ class CharacterRenderer:
             base_surf = CharacterRenderer._sprite_cache[cache_key]
         else:
             base_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-            skin_idx = entity.custom.get('skin', 0) % len(CUSTOM_COLORS['SKIN'])
-            cloth_idx = entity.custom.get('clothes', 0) % len(CUSTOM_COLORS['CLOTHES'])
-            body_color = CUSTOM_COLORS['SKIN'][skin_idx]
-            clothes_color = CUSTOM_COLORS['CLOTHES'][cloth_idx]
+            skin_idx = entity.custom.get('skin', 0) % len(CUSTOM_COLORS.get('SKIN', [(0,0,0)])) if CUSTOM_COLORS.get('SKIN') else 0
+            cloth_idx = entity.custom.get('clothes', 0) % len(CUSTOM_COLORS.get('CLOTHES', [(0,0,0)])) if CUSTOM_COLORS.get('CLOTHES') else 0
+            body_color = CUSTOM_COLORS.get('SKIN', [(255,255,255)])[skin_idx]
+            clothes_color = CUSTOM_COLORS.get('CLOTHES', [(255,255,255)])[cloth_idx]
             if is_highlighted: body_color = (255, 50, 50); clothes_color = (150, 0, 0)
             pygame.draw.ellipse(base_surf, (0, 0, 0, 80), (4, TILE_SIZE - 8, TILE_SIZE - 8, 6))
             pygame.draw.rect(base_surf, body_color, CharacterRenderer.RECT_BODY, border_radius=6)
@@ -93,129 +91,101 @@ class CharacterRenderer:
         screen.blit(final_surf, (draw_x, draw_y))
 
         name_color = (230, 230, 230)
-        if entity.role == "POLICE" and viewer_role in ["POLICE", "SPECTATOR"]: name_color = (100, 180, 255)
-        elif entity.role == "MAFIA" and viewer_role in ["MAFIA", "SPECTATOR"]: name_color = (255, 100, 100)
-        text_cache_key = (entity.uid, entity.name, name_color, entity.z_level) # [수정] Z-Level 추가
+        if role_name == "POLICE" and entity.role in ["POLICE", "SPECTATOR"]: name_color = (100, 180, 255)
+        elif role_name == "MAFIA" and entity.role in ["MAFIA", "SPECTATOR"]: name_color = (255, 100, 100)
+        text_cache_key = (entity.uid, entity.name, name_color, entity.z_level) 
         if text_cache_key in CharacterRenderer._name_surface_cache: name_surf = CharacterRenderer._name_surface_cache[text_cache_key]
         else: name_surf = CharacterRenderer.NAME_FONT.render(entity.name, True, name_color); CharacterRenderer._name_surface_cache[text_cache_key] = name_surf
         screen.blit(name_surf, (draw_x + (TILE_SIZE // 2) - (name_surf.get_width() // 2), draw_y - 14))
 
 class MapRenderer:
-    CHUNK_SIZE = 16 # Tiles per chunk (16x32 = 512px)
-
     def __init__(self, map_manager):
         self.map_manager = map_manager
-        # 3D 캐시: {(z, cx, cy): Surface}
-        self._floor_cache = {}
-        self._wall_cache = {}
-        self.map_width_tiles = map_manager.width
-        self.map_height_tiles = map_manager.height
-
-    def invalidate_cache(self):
-        self._floor_cache.clear()
-        self._wall_cache.clear()
-
-    def _render_chunk(self, z, cx, cy, layer_name):
-        surf = pygame.Surface((self.CHUNK_SIZE * TILE_SIZE, self.CHUNK_SIZE * TILE_SIZE), pygame.SRCALPHA)
-        start_col = cx * self.CHUNK_SIZE
-        start_row = cy * self.CHUNK_SIZE
-        end_col = min(start_col + self.CHUNK_SIZE, self.map_width_tiles)
-        end_row = min(start_row + self.CHUNK_SIZE, self.map_height_tiles)
+        self.map_width = map_manager.width
+        self.map_height = map_manager.height
         
-        if z >= len(self.map_manager.layers): return surf
-        layer_data = self.map_manager.layers[z][layer_name]
-        
-        for r in range(start_row, end_row):
-            for c in range(start_col, end_col):
-                draw_x = (c - start_col) * TILE_SIZE
-                draw_y = (r - start_row) * TILE_SIZE
-                tid, rot = layer_data[r][c]
-                if tid != 0:
-                    img = get_texture(tid, rot)
-                    surf.blit(img, (draw_x, draw_y))
-        return surf
+        # [Debug] 텍스처 로딩 실패 시 사용할 핑크색 텍스처
+        self.error_surf = pygame.Surface((TILE_SIZE, TILE_SIZE))
+        self.error_surf.fill((255, 0, 255)) # Magenta
+        pygame.draw.rect(self.error_surf, (0, 0, 0), (0, 0, TILE_SIZE, TILE_SIZE), 1)
 
-    def draw(self, screen, camera, dt, entities, player_z_level=0, visible_tiles=None, tile_alphas=None):
+    def draw(self, screen, camera, dt, entities, player_z_level=0, visible_tiles=None, tile_alphas=None, viewer_role="CITIZEN", current_phase="DAY", viewer_device_on=False):
         if tile_alphas is None: tile_alphas = {}
 
-        all_render_items = [] # 모든 맵 타일과 엔티티를 담을 리스트
+        # 렌더링 범위 계산 (Y축이 압축되었으므로 더 많은 행을 그려야 함)
+        start_col = int(camera.x // TILE_SIZE) - 2
+        end_col = int((camera.x + camera.width / camera.zoom_level) // TILE_SIZE) + 4
+        
+        # Y축 역산: camera.y / TILE_STEP_Y
+        start_row = int(camera.y // TILE_STEP_Y) - 6 
+        end_row = int((camera.y + camera.height / camera.zoom_level) // TILE_STEP_Y) + 12
 
-        # 1. 맵 타일 데이터 수집 (모든 층)
-        # 보이는 화면 범위 계산
-        cam_world_x_start = camera.x
-        cam_world_y_start = camera.y
-        cam_world_x_end = camera.x + camera.width / camera.zoom_level
-        cam_world_y_end = camera.y + camera.height / camera.zoom_level
+        entities_by_row = {}
+        for ent in entities:
+            if not ent.alive: continue
+            # Y축 압축을 고려한 정렬 기준 Y 좌표 계산
+            r = int(ent.rect.bottom // TILE_SIZE) # 기존 rect.bottom은 TILE_SIZE 기준이므로 그대로 사용
+            if r not in entities_by_row: entities_by_row[r] = []
+            entities_by_row[r].append(ent)
 
-        start_tile_x = int(max(0, cam_world_x_start // TILE_SIZE))
-        start_tile_y = int(max(0, cam_world_y_start // TILE_SIZE))
-        end_tile_x = int(min(self.map_manager.width, cam_world_x_end // TILE_SIZE + 2))
-        end_tile_y = int(min(self.map_manager.height, cam_world_y_end // TILE_SIZE + 2))
+        # --- Y축 루프 --- (압축된 행 기준)
+        for r in range(start_row, end_row):
+            # Z축 루프
+            for z in range(len(self.map_manager.layers)):
+                
+                # 지붕 가림 처리
+                draw_alpha = 255
+                if z > player_z_level:
+                    draw_alpha = 40 # 플레이어 위층은 반투명
+                
+                if draw_alpha < 10: continue # 너무 투명하면 건너뜀
 
-        for z in range(len(self.map_manager.layers)): # 모든 층을 순회
-            is_current_or_below = (z <= player_z_level) # 플레이어 층 이하만 그림
-            if not is_current_or_below: continue # 위층은 그리지 않음
+                # X축 루프
+                for c in range(start_col, end_col):
+                    if not (0 <= c < self.map_manager.width and 0 <= r < self.map_manager.height): continue
 
-            alpha_factor = 255 if (z == player_z_level) else 150 # 현재 층은 불투명, 아래층은 반투명
-            
-            for r in range(start_tile_y, end_tile_y):
-                for c in range(start_tile_x, end_tile_x):
-                    # 2.5D 투영 좌표 계산
-                    draw_base_x = c * TILE_SIZE
-                    draw_base_y = r * TILE_SIZE - (z * BLOCK_HEIGHT) 
+                    # [핵심] Y좌표 압축 (Foreshortening)
+                    # TILE_SIZE(32) 대신 TILE_STEP_Y(24)를 곱해서 그립니다.
+                    # 이렇게 하면 뒷줄(r)과 앞줄(r+1)이 8px만큼 겹치게 됩니다.
+                    
+                    base_x = c * TILE_SIZE - camera.x
+                    base_y = r * TILE_STEP_Y - camera.y - (z * BLOCK_HEIGHT)
 
-                    # Floor
-                    tid_f, rot_f = self.map_manager.get_tile_full(c, r, z, 'floor')
-                    if tid_f != 0:
-                        img_f = get_texture(tid_f, rot_f)
-                        all_render_items.append((draw_base_y, img_f, (draw_base_x - camera.x, draw_base_y - camera.y), alpha_factor))
+                    # 각 레이어 순회 (Floor -> Wall -> Object)
+                    for layer in ['floor', 'wall', 'object']:
+                        val = self.map_manager.get_tile_full(c, r, z, layer)
+                        tid = val[0]
+                        if tid == 0: continue
                         
-                        # Zone Overlay
-                        zid = self.map_manager.zone_map[r][c]
-                        if zid != 0 and zid in ZONES:
-                            zone_color = ZONES[zid]['color']
-                            zone_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-                            zone_surf.fill(zone_color)
-                            all_render_items.append((draw_base_y + 0.1, zone_surf, (draw_base_x - camera.x, draw_base_y - camera.y), alpha_factor)) # 약간 위에 그려지도록
+                        img = get_texture(tid, val[1])
+                        if not img: img = self.error_surf
+                        
+                        # 렌더링 좌표 설정
+                        draw_x = base_x
+                        draw_y = base_y
+                        
+                        # 벽/오브젝트는 위로 솟구치게 (Standing)
+                        if layer != 'floor':
+                            draw_y -= BLOCK_HEIGHT
 
-                    # Objects (Non-Doors first)
-                    tid_o, rot_o = self.map_manager.get_tile_full(c, r, z, 'object')
-                    if tid_o != 0 and get_tile_category(tid_o) != 5:
-                        img_o = get_texture(tid_o, rot_o)
-                        all_render_items.append((draw_base_y + TILE_SIZE, img_o, (draw_base_x - camera.x, draw_base_y - camera.y), alpha_factor)) # 오브젝트는 Y Sorting을 위해 +TILE_SIZE
+                        # 알파값 적용 및 렌더링
+                        if draw_alpha < 255:
+                            temp_img = img.copy()
+                            temp_img.set_alpha(draw_alpha)
+                            screen.blit(temp_img, (draw_x, draw_y))
+                        else:
+                            screen.blit(img, (draw_x, draw_y))
 
-                    # Walls
-                    tid_w, rot_w = self.map_manager.get_tile_full(c, r, z, 'wall')
-                    if tid_w != 0:
-                        img_w = get_texture(tid_w, rot_w)
-                        all_render_items.append((draw_base_y + TILE_SIZE, img_w, (draw_base_x - camera.x, draw_base_y - camera.y), alpha_factor)) # 벽도 Y Sorting을 위해 +TILE_SIZE
-
-        # 2. 엔티티 데이터 수집
-        for entity in entities:
-            if entity.alive:
-                # 엔티티도 맵 타일과 같은 기준으로 Y좌표 보정
-                entity_draw_y = entity.rect.y - (entity.z_level * BLOCK_HEIGHT)
-                # CharacterRenderer를 직접 호출하지 않고, 필요한 정보만 저장
-                all_render_items.append((entity_draw_y + TILE_SIZE, 'ENTITY', entity)) # Y Sorting을 위해 +TILE_SIZE
-
-        # 3. 깊이 정렬 (Y-Sorting)
-        all_render_items.sort(key=lambda item: item[0])
-
-        # 4. 정렬된 순서대로 그리기
-        for item in all_render_items:
-            sort_key, item_type, data = item[0], item[1], item[2]
-            alpha_factor = item[3] if len(item) > 3 else 255
-            
-            if item_type == 'ENTITY':
-                CharacterRenderer.draw_entity(screen, data, camera.x, camera.y, player_z_level, "DAY", False) # phase와 device_on은 임시값
-            else: # Map Tile (img, pos, alpha)
-                img, pos = data, item[2]
-                if alpha_factor < 255: 
-                    img = img.copy()
-                    img.set_alpha(alpha_factor)
-                screen.blit(img, pos)
-
-        # 5. 문 (오브젝트 중 문은 가장 마지막에 그려져야 함 -> 깊이 정렬이 깨질 수 있으므로 별도 처리)
-        # 하지만 Y-Sorting에 포함시키면 더 자연스러움. 여기서는 Y-Sorting에 포함된 것으로 가정하고 별도 루프 제거.
-        # 만약 문이 다른 오브젝트와 겹쳐서 이상하게 그려진다면, 문의 Z값이 더 높거나
-        # 특별한 정렬 규칙이 필요할 수 있음. (일단은 Y-Sorting에 포함)
+            # 엔티티 그리기 (해당 줄)
+            # 엔티티는 자기 자체의 Y좌표 (rect.bottom)를 기준으로 정렬되므로, 
+            # 렌더링 시에는 압축된 Y좌표 (base_y)를 사용해야 합니다.
+            if r in entities_by_row:
+                # 같은 줄 내에서도 Y좌표 기준으로 정렬 (Y-Sorting)
+                sorted_entities = sorted(entities_by_row[r], key=lambda e: e.rect.bottom - (e.z_level * BLOCK_HEIGHT))
+                for ent in sorted_entities:
+                    ent_z = getattr(ent, 'z_level', 0)
+                    z_offset = ent_z * BLOCK_HEIGHT
+                    
+                    # CharacterRenderer.draw_entity 내부에서 Y축 압축을 수행하므로
+                    # 여기서는 그냥 Z오프셋만 넘겨주면 됩니다.
+                    CharacterRenderer.draw_entity(screen, ent, camera.x, camera.y + z_offset, ent.role, phase, device_on)

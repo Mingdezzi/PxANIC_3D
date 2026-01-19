@@ -17,9 +17,13 @@ from entities.player_logic.actions import ActionLogic
 from entities.player_logic.inventory import InventoryLogic
 
 class Player(Entity):
-    def __init__(self, x, y, width, height, map_data, zone_map, map_manager=None):
-        super().__init__(x, y, map_data, map_width=width, map_height=height, zone_map=zone_map, name="Player", role="CITIZEN", map_manager=map_manager)
-        self.logger = GameLogger.get_instance()
+    def __init__(self, x, y, map_data, map_width, map_height, zone_map, name="Player", role="CITIZEN", map_manager=None, game=None):
+        
+        super().__init__(x, y, map_data, map_width, map_height, zone_map, name, role, map_manager)
+        
+        self.game = game  # [추가] game 객체 저장
+        
+        self.logger = GameLogger.get_instance() # [수정] game 객체로부터 logger를 가져오지 않고 직접 인스턴스 가져오기 (GameLogger는 싱글턴)
         self.start_x = float(self.rect.x); self.start_y = float(self.rect.y)
         
         self.color = COLORS['CLOTHES']
@@ -35,7 +39,7 @@ class Player(Entity):
         self.bullets_fired_today = 0; self.day_count = 0; self.exhausted = False; self.exhaust_timer = 0
         self.doors_to_close = []; self.current_phase_ref = "MORNING"
         self.custom = {'skin': 0, 'clothes': 0, 'hat': 0}
-        self.move_state = "WALK"; self.facing_dir = (0, 1); self.interaction_hold_timer = 0; self.e_key_pressed = False
+        self.move_state = "WALK"; self.facing_dir = (0, 1); self.z_level = 0; self.interaction_hold_timer = 0; self.e_key_pressed = False
         
         # [Logic Components]
         self.logic_move = MovementLogic(self)

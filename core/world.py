@@ -71,7 +71,7 @@ class GameWorld:
             
             if pid == my_id:
                 # This is ME (could be Player or Spectator)
-                self.player = Player(sx, sy, mw, mh, None, zm, map_manager=self.map_manager)
+                self.player = Player(sx, sy, mw, mh, None, zm, map_manager=self.map_manager, game=self.game)
                 self.player.uid = pid
                 self.player.name = name
                 self.player.is_player = True

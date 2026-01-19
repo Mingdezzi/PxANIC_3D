@@ -12,20 +12,17 @@ class ActionLogic:
         self.logger = GameLogger.get_instance()
 
     def interact_tile(self, gx, gy, npcs, mode='short'):
-        px, py = self.p.rect.centerx // TILE_SIZE, self.p.rect.centery // TILE_SIZE
-        dist = abs(px - gx) + abs(py - gy)
-        if dist != 1: return None
-
-        tid = 0; target_layer = None
-        map_mgr = self.p.map_manager
-        pz = self.p.z_level
+        pz = self.p.z_level # [수정] 플레이어의 현재 Z레벨
         
         if 0 <= gx < self.p.map_width and 0 <= gy < self.p.map_height:
+            # [수정] pz 전달
             if map_mgr and map_mgr.is_tile_on_cooldown(gx, gy, pz): return "Cooldown!"
             for layer in ['object', 'wall', 'floor']:
+                # [수정] get_tile_full 호출 시 pz 전달
                 val = map_mgr.get_tile_full(gx, gy, pz, layer)
                 if val[0] != 0:
                     tid_check = val[0]; cat = get_tile_category(tid_check); d_val = get_tile_interaction(tid_check); func = get_tile_function(tid_check)
+                    # [수정] TILE_ID_LOCKED_CHEST는 settings에서 import
                     if cat in [5, 9] or d_val > 0 or func in [2, 3] or tid_check == TILE_ID_LOCKED_CHEST: tid = tid_check; target_layer = layer; break
 
         if tid == 0: return None

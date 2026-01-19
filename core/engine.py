@@ -5,11 +5,11 @@ import time
 from settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS
 from core.state_machine import StateMachine
 from systems.logger import GameLogger
+from systems.input_handler import InputHandler # [추가 1] 임포트 추가
 
 class GameEngine:
     def __init__(self):
         pygame.init()
-        # [Optimization] Disable Auto GC to prevent stuttering
         gc.disable()
         
         self.logger = GameLogger.get_instance()
@@ -23,6 +23,9 @@ class GameEngine:
         self.clock = pygame.time.Clock()
         self.running = True
 
+        # [추가 2] InputHandler 초기화
+        self.input_handler = InputHandler(self)
+        
         self.state_machine = StateMachine(self)
         self.shared_data = {}
 
@@ -38,7 +41,6 @@ class GameEngine:
         while self.running:
             dt = self.clock.tick(FPS) / 1000.0
             
-            # Profiling
             start_t = time.perf_counter()
             
             self.process_events()
@@ -50,8 +52,6 @@ class GameEngine:
             
             self.frame_count += 1
             if time.time() - self.last_profile_time >= 1.0:
-                # Uncomment to see FPS logs
-                # print(f"[Profile] FPS: {self.clock.get_fps():.1f} | Frame Time: {frame_time:.2f}ms")
                 self.last_profile_time = time.time()
                 self.frame_count = 0
 
@@ -62,16 +62,16 @@ class GameEngine:
             if event.type == pygame.QUIT:
                 self.running = False
 
-
-            if event.type == pygame.VIDEORESIZE:
-                self.screen_width, self.screen_height = event.w, event.h
-                self.screen = pygame.display.set_mode((self.screen_width, self.screen_height), pygame.RESIZABLE)
-
-
+            # [추가 3] InputHandler가 이벤트를 처리하도록 호출
+            self.input_handler.handle_event(event)
 
             self.state_machine.handle_event(event)
 
     def update(self, dt):
+        # [추가 4] InputHandler가 매 프레임 업데이트되도록 호출 (InputHandler에 update 메서드가 있다고 가정)
+        if hasattr(self.input_handler, 'update'):
+            self.input_handler.update()
+        
         self.state_machine.update(dt)
 
     def draw(self):

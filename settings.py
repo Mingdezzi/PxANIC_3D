@@ -3,7 +3,7 @@ import pygame
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 TILE_SIZE = 32
-BLOCK_HEIGHT = 32 # 타일 높이 상수 추가
+BLOCK_HEIGHT = 32  # [수정] 24 -> 32 (더 두껍게, 정육면체 느낌)
 FPS = 60
 
 # [최적화] 전역 폰트 캐시 저장소 추가
@@ -171,6 +171,11 @@ DOOR_INTERACTION_MAP = {
     9001002: 9001001
 }
 
+# [추가] 특정 타일 ID 정의
+TILE_ID_LOCKED_CHEST = 5323025
+TILE_ID_OPEN_CHEST = 5310025
+TILE_ID_BROKEN_WALL = 5310005 # 기존 Broken Door와 동일 ID (임시)
+
 # Hiding logic is now handled dynamically based on Tile ID structure (5th digit E)
 # E=1: Passive Hide, E=2: Active Hide
 
@@ -203,3 +208,8 @@ except Exception as e:
 NETWORK_PORT = 5555
 SERVER_IP = "127.0.0.1" # Localhost default
 BUFFER_SIZE = 4096
+
+# [NEW] TILE_STEP_Y 추가
+# 시각적 Y축 간격 (32보다 작게 설정하여 타일을 겹침 -> 시점이 내려간 효과)
+# 24 정도가 가장 자연스러운 2.5D 비율입니다. (32 * 0.75)
+TILE_STEP_Y = 24

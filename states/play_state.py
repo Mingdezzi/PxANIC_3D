@@ -160,7 +160,7 @@ class PlayState(BaseState):
         if self.camera: self.camera.resize(self.game.screen_width, self.game.screen_height)
         if not self.player.is_dead and not (self.ui.show_vending or self.ui.show_inventory or self.ui.show_voting or self.is_chatting):
             if not self.player.is_stunned():
-                fx = self.player.update(self.current_phase, self.npcs, self.world.is_blackout, self.weather)
+                fx = self.player.update(dt, self.current_phase, self.npcs, self.world.is_blackout, self.weather)
                 if fx:
                     for f in fx: self._process_sound_effect(f)
                 for p in self.player.popups:
@@ -195,7 +195,7 @@ class PlayState(BaseState):
             if self.player.role == "POLICE" and self.player.flashlight_on and self.current_phase in ['EVENING', 'NIGHT', 'DAWN']:
                 direction = self.player.facing_dir
         
-        self.visible_tiles = self.fov.cast_rays(self.player.rect.centerx, self.player.rect.centery, rad, direction, 60)
+        self.visible_tiles = self.fov.cast_rays(self.player.rect.centerx, self.player.rect.centery, rad, direction, 60, z_level=self.player.z_level)
         for tile in self.visible_tiles: self.tile_alphas[tile] = min(255, self.tile_alphas.get(tile, 0) + 15)
         for tile in list(self.tile_alphas.keys()):
             if tile not in self.visible_tiles:
@@ -292,9 +292,24 @@ class PlayState(BaseState):
         # 현재 플레이어의 Z-Level을 MapRenderer에 전달
         player_current_z = self.player.z_level if self.player and hasattr(self.player, 'z_level') else 0
 
+        viewer_role = self.player.role if self.player else "SPECTATOR"
+        is_device_on = self.player.device_on if self.player else False
+        
         if self.map_renderer:
             vis = self.visible_tiles if self.player.role != "SPECTATOR" else None
-            self.map_renderer.draw(screen, self.camera, 0, all_entities, player_current_z, visible_tiles=vis, tile_alphas=self.tile_alphas)
+            self.map_renderer.draw(
+                screen, 
+                self.camera, 
+                0, 
+                all_entities, 
+                player_current_z, 
+                visible_tiles=vis, 
+                tile_alphas=self.tile_alphas,
+                viewer_role=viewer_role,           # 추가됨
+                current_phase=self.current_phase,  # 추가됨
+                viewer_device_on=is_device_on      # 추가됨
+            )
+
         
         # Lighting Manager는 이제 MapRenderer가 그린 위에 마스크를 씌움
         if self.player.role != "SPECTATOR": self.lighting.apply_lighting(self.camera)
