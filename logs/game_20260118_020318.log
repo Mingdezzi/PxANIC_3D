@@ -1,0 +1,18 @@
+2026-01-18 02:03:18,866 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 02:03:18,868 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 02:03:18,868 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 02:03:19,065 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-18 02:03:19,119 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-18 02:03:26,739 - [INFO] - [PLAY] Entering PlayState...
+2026-01-18 02:03:26,753 - [INFO] - [PLAYER] Initialized at (1536, 1536) Role: CITIZEN
+2026-01-18 02:03:26,757 - [INFO] - [PLAYER] Role changed to POLICE (None)
+2026-01-18 02:03:33,534 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 02:03:33,631 - [DEBUG] - [INPUT] E Key Released (Hold: 100ms) Target: (90, 54)
+2026-01-18 02:03:33,634 - [INFO] - [PLAYER] Interact with 5321207 at (90, 54) Mode: short
+2026-01-18 02:03:36,970 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 02:03:37,086 - [DEBUG] - [INPUT] E Key Released (Hold: 116ms) Target: (88, 61)
+2026-01-18 02:03:37,088 - [INFO] - [PLAYER] Interact with 8320214 at (88, 61) Mode: short
+2026-01-18 02:03:39,154 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 02:03:39,250 - [DEBUG] - [INPUT] E Key Released (Hold: 99ms) Target: (92, 56)
+2026-01-18 02:03:46,706 - [INFO] - [PLAYER] Morning Process Complete
+2026-01-18 02:04:01,571 - [INFO] - [SYSTEM] Engine Shutting Down

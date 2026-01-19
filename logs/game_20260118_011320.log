@@ -1,0 +1,17 @@
+2026-01-18 01:13:20,288 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 01:13:20,289 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 01:13:20,289 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 01:13:20,496 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-18 01:13:20,536 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-18 01:13:20,606 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 01:13:20,607 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 01:13:20,607 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 01:13:29,455 - [INFO] - [PLAY] Entering PlayState...
+2026-01-18 01:13:29,468 - [INFO] - [PLAYER] Initialized at (1568, 1696) Role: CITIZEN
+2026-01-18 01:13:29,478 - [INFO] - [PLAYER] Role changed to CITIZEN (FISHER)
+2026-01-18 01:13:44,707 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:13:44,860 - [DEBUG] - [INPUT] E Key Released (Hold: 152ms) Target: (49, 54)
+2026-01-18 01:13:46,054 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:13:49,192 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:13:49,421 - [INFO] - [PLAYER] Morning Process Complete
+2026-01-18 01:13:52,271 - [INFO] - [SYSTEM] Engine Shutting Down

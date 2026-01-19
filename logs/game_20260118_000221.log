@@ -1,0 +1,16 @@
+2026-01-18 00:02:21,590 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 00:02:21,590 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 00:02:21,590 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 00:02:21,776 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-18 00:02:21,810 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-18 00:02:21,919 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 00:02:21,919 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 00:02:21,919 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 00:02:25,832 - [INFO] - [PLAY] Entering PlayState...
+2026-01-18 00:02:25,845 - [INFO] - [PLAYER] Initialized at (1632, 1632) Role: CITIZEN
+2026-01-18 00:02:25,856 - [INFO] - [PLAYER] Role changed to CITIZEN (FARMER)
+2026-01-18 00:02:45,848 - [INFO] - [PLAYER] Morning Process Complete
+2026-01-18 00:03:07,877 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 00:03:07,977 - [DEBUG] - [INPUT] E Key Released (Hold: 100ms) Target: (18, 8)
+2026-01-18 00:03:07,979 - [INFO] - [PLAYER] Interact with 9312000 at (18, 8) Mode: short
+2026-01-18 00:03:11,088 - [INFO] - [SYSTEM] Engine Shutting Down

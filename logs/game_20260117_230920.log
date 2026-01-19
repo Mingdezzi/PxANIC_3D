@@ -1,0 +1,28 @@
+2026-01-17 23:09:20,210 - [INFO] - [DATA] Loaded 17 items.
+2026-01-17 23:09:20,210 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-17 23:09:20,210 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-17 23:09:20,454 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-17 23:09:20,469 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-17 23:09:20,511 - [INFO] - [DATA] Loaded 17 items.
+2026-01-17 23:09:20,511 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-17 23:09:20,511 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-17 23:09:25,227 - [INFO] - [PLAY] Entering PlayState...
+2026-01-17 23:09:25,241 - [INFO] - [PLAYER] Initialized at (1600, 1632) Role: CITIZEN
+2026-01-17 23:09:25,243 - [INFO] - [PLAYER] Role changed to CITIZEN (FARMER)
+2026-01-17 23:09:45,250 - [INFO] - [PLAYER] Morning Process Complete
+2026-01-17 23:10:00,848 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-17 23:10:01,836 - [DEBUG] - [INPUT] E Key Released (Hold: 989ms) Target: (88, 78)
+2026-01-17 23:10:02,318 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-17 23:10:02,431 - [DEBUG] - [INPUT] E Key Released (Hold: 113ms) Target: (88, 78)
+2026-01-17 23:10:02,995 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-17 23:10:03,093 - [DEBUG] - [INPUT] E Key Released (Hold: 99ms) Target: (88, 75)
+2026-01-17 23:10:16,097 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-17 23:10:16,162 - [DEBUG] - [INPUT] E Key Released (Hold: 65ms) Target: (94, 6)
+2026-01-17 23:10:16,164 - [INFO] - [PLAYER] Interact with 9322004 at (94, 6) Mode: short
+2026-01-17 23:10:16,574 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-17 23:10:16,656 - [DEBUG] - [INPUT] E Key Released (Hold: 83ms) Target: (94, 6)
+2026-01-17 23:10:16,657 - [INFO] - [PLAYER] Interact with 9322004 at (94, 6) Mode: short
+2026-01-17 23:10:28,634 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-17 23:10:28,783 - [DEBUG] - [INPUT] E Key Released (Hold: 149ms) Target: (18, 9)
+2026-01-17 23:10:28,783 - [INFO] - [PLAYER] Interact with 9312000 at (18, 9) Mode: short
+2026-01-17 23:10:33,171 - [INFO] - [SYSTEM] Engine Shutting Down

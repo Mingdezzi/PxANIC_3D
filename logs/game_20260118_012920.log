@@ -1,0 +1,102 @@
+2026-01-18 01:29:20,627 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 01:29:20,627 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 01:29:20,627 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 01:29:20,827 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-18 01:29:20,866 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-18 01:29:20,942 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 01:29:20,942 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 01:29:20,942 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 01:29:25,536 - [INFO] - [PLAY] Entering PlayState...
+2026-01-18 01:29:25,550 - [INFO] - [PLAYER] Initialized at (1536, 1568) Role: CITIZEN
+2026-01-18 01:29:25,559 - [INFO] - [PLAYER] Role changed to CITIZEN (MINER)
+2026-01-18 01:29:45,499 - [INFO] - [PLAYER] Morning Process Complete
+2026-01-18 01:29:57,446 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:29:57,562 - [DEBUG] - [INPUT] E Key Released (Hold: 116ms) Target: (96, 6)
+2026-01-18 01:29:57,565 - [INFO] - [PLAYER] Interact with 9322004 at (96, 6) Mode: short
+2026-01-18 01:30:01,669 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:01,785 - [DEBUG] - [INPUT] E Key Released (Hold: 117ms) Target: (92, 6)
+2026-01-18 01:30:01,787 - [INFO] - [PLAYER] Interact with 9322004 at (92, 6) Mode: short
+2026-01-18 01:30:08,173 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:08,306 - [DEBUG] - [INPUT] E Key Released (Hold: 133ms) Target: (91, 5)
+2026-01-18 01:30:08,306 - [INFO] - [PLAYER] Interact with 9322004 at (91, 5) Mode: short
+2026-01-18 01:30:12,062 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:12,243 - [DEBUG] - [INPUT] E Key Released (Hold: 182ms) Target: (90, 1)
+2026-01-18 01:30:12,245 - [INFO] - [PLAYER] Interact with 9322004 at (90, 1) Mode: short
+2026-01-18 01:30:15,835 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:15,951 - [DEBUG] - [INPUT] E Key Released (Hold: 115ms) Target: (91, 3)
+2026-01-18 01:30:15,953 - [INFO] - [PLAYER] Interact with 9322004 at (91, 3) Mode: short
+2026-01-18 01:30:26,952 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:27,015 - [DEBUG] - [INPUT] E Key Released (Hold: 67ms) Target: (86, 30)
+2026-01-18 01:30:27,015 - [INFO] - [PLAYER] Interact with 5321206 at (86, 30) Mode: short
+2026-01-18 01:30:31,086 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:31,168 - [DEBUG] - [INPUT] E Key Released (Hold: 85ms) Target: (86, 30)
+2026-01-18 01:30:31,168 - [INFO] - [PLAYER] Interact with 5310000 at (86, 30) Mode: short
+2026-01-18 01:30:31,321 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:31,403 - [DEBUG] - [INPUT] E Key Released (Hold: 81ms) Target: (86, 30)
+2026-01-18 01:30:31,403 - [INFO] - [PLAYER] Interact with 5321206 at (86, 30) Mode: short
+2026-01-18 01:30:31,520 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:31,637 - [DEBUG] - [INPUT] E Key Released (Hold: 118ms) Target: (86, 30)
+2026-01-18 01:30:31,639 - [INFO] - [PLAYER] Interact with 5310000 at (86, 30) Mode: short
+2026-01-18 01:30:31,768 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:31,863 - [DEBUG] - [INPUT] E Key Released (Hold: 96ms) Target: (86, 30)
+2026-01-18 01:30:31,864 - [INFO] - [PLAYER] Interact with 5321206 at (86, 30) Mode: short
+2026-01-18 01:30:31,996 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:32,078 - [DEBUG] - [INPUT] E Key Released (Hold: 82ms) Target: (86, 30)
+2026-01-18 01:30:32,079 - [INFO] - [PLAYER] Interact with 5310000 at (86, 30) Mode: short
+2026-01-18 01:30:32,225 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:32,308 - [DEBUG] - [INPUT] E Key Released (Hold: 83ms) Target: (86, 30)
+2026-01-18 01:30:32,310 - [INFO] - [PLAYER] Interact with 5321206 at (86, 30) Mode: short
+2026-01-18 01:30:32,442 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:32,509 - [DEBUG] - [INPUT] E Key Released (Hold: 66ms) Target: (86, 30)
+2026-01-18 01:30:32,510 - [INFO] - [PLAYER] Interact with 5310000 at (86, 30) Mode: short
+2026-01-18 01:30:32,643 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:32,709 - [DEBUG] - [INPUT] E Key Released (Hold: 66ms) Target: (86, 30)
+2026-01-18 01:30:32,711 - [INFO] - [PLAYER] Interact with 5321206 at (86, 30) Mode: short
+2026-01-18 01:30:32,841 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:32,923 - [DEBUG] - [INPUT] E Key Released (Hold: 82ms) Target: (86, 30)
+2026-01-18 01:30:32,925 - [INFO] - [PLAYER] Interact with 5310000 at (86, 30) Mode: short
+2026-01-18 01:30:36,452 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:36,530 - [DEBUG] - [INPUT] E Key Released (Hold: 83ms) Target: (73, 33)
+2026-01-18 01:30:36,530 - [INFO] - [PLAYER] Interact with 5321010 at (73, 33) Mode: short
+2026-01-18 01:30:39,429 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:39,593 - [DEBUG] - [INPUT] E Key Released (Hold: 165ms) Target: (75, 39)
+2026-01-18 01:30:45,703 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:45,834 - [DEBUG] - [INPUT] E Key Released (Hold: 134ms) Target: (93, 54)
+2026-01-18 01:30:45,834 - [INFO] - [PLAYER] Interact with 5321207 at (93, 54) Mode: short
+2026-01-18 01:30:47,670 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:49,241 - [DEBUG] - [INPUT] E Key Released (Hold: 1570ms) Target: (95, 61)
+2026-01-18 01:30:49,243 - [INFO] - [PLAYER] Interact with 5321025 at (95, 61) Mode: long
+2026-01-18 01:30:57,834 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:30:59,613 - [DEBUG] - [INPUT] E Key Released (Hold: 1780ms) Target: (95, 61)
+2026-01-18 01:30:59,613 - [INFO] - [PLAYER] Interact with 5321025 at (95, 61) Mode: long
+2026-01-18 01:31:09,952 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:31:10,118 - [DEBUG] - [INPUT] E Key Released (Hold: 167ms) Target: (93, 54)
+2026-01-18 01:31:10,118 - [INFO] - [PLAYER] Interact with 5321207 at (93, 54) Mode: short
+2026-01-18 01:31:20,564 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:31:20,664 - [DEBUG] - [INPUT] E Key Released (Hold: 100ms) Target: (61, 67)
+2026-01-18 01:31:20,664 - [INFO] - [PLAYER] Interact with 5321008 at (61, 67) Mode: short
+2026-01-18 01:31:22,449 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:31:22,582 - [DEBUG] - [INPUT] E Key Released (Hold: 133ms) Target: (61, 64)
+2026-01-18 01:31:27,553 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:31:29,712 - [DEBUG] - [INPUT] E Key Released (Hold: 2159ms) Target: (47, 82)
+2026-01-18 01:31:30,514 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:31:32,125 - [DEBUG] - [INPUT] E Key Released (Hold: 1610ms) Target: (47, 82)
+2026-01-18 01:31:32,677 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:31:34,220 - [DEBUG] - [INPUT] E Key Released (Hold: 1543ms) Target: (46, 81)
+2026-01-18 01:31:34,221 - [INFO] - [PLAYER] Interact with 5323220 at (46, 81) Mode: long
+2026-01-18 01:31:48,893 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:31:49,010 - [DEBUG] - [INPUT] E Key Released (Hold: 115ms) Target: (35, 53)
+2026-01-18 01:31:49,010 - [INFO] - [PLAYER] Interact with 5321206 at (35, 53) Mode: short
+2026-01-18 01:31:50,616 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:31:50,680 - [DEBUG] - [INPUT] E Key Released (Hold: 67ms) Target: (35, 53)
+2026-01-18 01:31:50,681 - [INFO] - [PLAYER] Interact with 5310000 at (35, 53) Mode: short
+2026-01-18 01:32:03,787 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:32:15,764 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:32:16,878 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:32:18,605 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:32:20,063 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:32:20,649 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:32:20,947 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:32:21,014 - [DEBUG] - [INPUT] E Key Released (Hold: 67ms) Target: (44, 61)
+2026-01-18 01:32:21,014 - [INFO] - [PLAYER] Interact with 8320209 at (44, 61) Mode: short
+2026-01-18 01:32:27,853 - [INFO] - [SYSTEM] Engine Shutting Down

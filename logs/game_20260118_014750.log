@@ -1,0 +1,30 @@
+2026-01-18 01:47:50,027 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 01:47:50,028 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 01:47:50,028 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 01:47:50,219 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-18 01:47:50,256 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-18 01:47:50,343 - [INFO] - [DATA] Loaded 17 items.
+2026-01-18 01:47:50,343 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-18 01:47:50,343 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-18 01:47:57,982 - [INFO] - [PLAY] Entering PlayState...
+2026-01-18 01:47:57,997 - [INFO] - [PLAYER] Initialized at (1472, 1472) Role: CITIZEN
+2026-01-18 01:47:58,010 - [INFO] - [PLAYER] Role changed to POLICE (None)
+2026-01-18 01:47:59,929 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:48:02,168 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:48:02,451 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:48:03,246 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:48:03,508 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:48:03,987 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:48:04,283 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:48:04,609 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:48:09,930 - [DEBUG] - [PLAYER] Device toggled: True
+2026-01-18 01:48:10,452 - [DEBUG] - [PLAYER] Device toggled: False
+2026-01-18 01:48:16,300 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:48:16,381 - [DEBUG] - [INPUT] E Key Released (Hold: 81ms) Target: (44, 26)
+2026-01-18 01:48:16,777 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:48:16,879 - [DEBUG] - [INPUT] E Key Released (Hold: 101ms) Target: (42, 26)
+2026-01-18 01:48:17,432 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-18 01:48:17,544 - [DEBUG] - [INPUT] E Key Released (Hold: 117ms) Target: (43, 26)
+2026-01-18 01:48:17,549 - [INFO] - [PLAYER] Interact with 5321206 at (43, 26) Mode: short
+2026-01-18 01:48:17,922 - [INFO] - [PLAYER] Morning Process Complete
+2026-01-18 01:48:20,919 - [INFO] - [SYSTEM] Engine Shutting Down
