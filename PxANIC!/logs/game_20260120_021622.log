@@ -1,0 +1,21 @@
+2026-01-20 02:16:22,224 - [INFO] - [DATA] Loaded 17 items.
+2026-01-20 02:16:22,225 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-20 02:16:22,225 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-20 02:16:22,409 - [INFO] - [SYSTEM] Game Engine Initializing...
+2026-01-20 02:16:22,454 - [INFO] - [SYSTEM] Engine Loop Started
+2026-01-20 02:16:22,554 - [INFO] - [DATA] Loaded 17 items.
+2026-01-20 02:16:22,555 - [INFO] - [DATA] Loaded 110 tiles.
+2026-01-20 02:16:22,555 - [INFO] - [DATA] Loaded 5 roles.
+2026-01-20 02:16:23,719 - [INFO] - [PLAY] Entering PlayState...
+2026-01-20 02:16:23,862 - [INFO] - [PLAYER] Initialized at (1696, 1536) Role: CITIZEN
+2026-01-20 02:16:23,863 - [INFO] - [PLAYER] Role changed to CITIZEN (MINER)
+2026-01-20 02:16:43,685 - [INFO] - [PLAYER] Morning Process Complete
+2026-01-20 02:16:54,233 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-20 02:16:54,351 - [DEBUG] - [INPUT] E Key Released (Hold: 117ms) Target: (53, 23)
+2026-01-20 02:16:55,462 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-20 02:16:55,559 - [DEBUG] - [INPUT] E Key Released (Hold: 98ms) Target: (53, 24)
+2026-01-20 02:16:55,559 - [INFO] - [PLAYER] Interact with 5321009 at (53, 24) Mode: short
+2026-01-20 02:17:08,872 - [DEBUG] - [INPUT] E Key Pressed
+2026-01-20 02:17:08,937 - [DEBUG] - [INPUT] E Key Released (Hold: 67ms) Target: (53, 24)
+2026-01-20 02:17:08,937 - [INFO] - [PLAYER] Interact with 5321009 at (53, 24) Mode: short
+2026-01-20 02:17:20,308 - [INFO] - [SYSTEM] Engine Shutting Down
