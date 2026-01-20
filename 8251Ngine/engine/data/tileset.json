@@ -1,0 +1,37 @@
+{
+    "FLOORS": {
+        "1110000": "Dirt Floor",
+        "1110001": "Grass Floor",
+        "1110002": "Gravel Floor",
+        "1110003": "Sand Floor",
+        "1110004": "Water Floor",
+        "1110009": "Marble Floor",
+        "1110010": "Concrete",
+        "1110011": "Asphalt Road",
+        "2110000": "Checkered Tile",
+        "2110001": "Red Carpet"
+    },
+    "WALLS": {
+        "3220000": "Red Brick Wall",
+        "3220001": "Grey Brick Wall",
+        "3220003": "Wood Wall",
+        "3220005": "White Wall",
+        "3220010": "Glass Wall",
+        "3220012": "Bookshelf Wall"
+    },
+    "DECO": {
+        "6310000": "Red Flower",
+        "6310001": "Yellow Flower",
+        "6310106": "Tree Trunk",
+        "7310010": "Street Light",
+        "8320004": "TV",
+        "8320205": "Refrigerator",
+        "8321006": "Vending Machine"
+    },
+    "INTERACT": {
+        "5321206": "Wood Door",
+        "5321025": "Chest",
+        "9312000": "Farm Field",
+        "9312003": "Fishing Spot"
+    }
+}
