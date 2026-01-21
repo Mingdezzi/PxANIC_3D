@@ -6,6 +6,12 @@ TILE_SIZE = 32
 WALL_HEIGHT = 18
 FPS = 60
 
+# [최적화] 그래픽 품질 설정
+# [중요] 렉이 심하면 False로 설정하세요. 그림자 연산이 CPU를 가장 많이 먹습니다.
+ENABLE_SHADOWS = False       
+SHADOW_QUALITY = 'LOW'
+USE_CULLING = True
+
 # [최적화] 전역 폰트 캐시 저장소 추가
 SHARED_FONTS = {}
 
@@ -23,6 +29,8 @@ WEATHER_TYPES = ['CLEAR', 'RAIN', 'FOG', 'SNOW']
 WEATHER_PROBS = [0.7, 0.1, 0.1, 0.1]
 
 # [Update] Movement Speeds (Pixels per Frame at 60 FPS)
+# 주의: 이 값은 픽셀이 아니라 타일 단위 이동 속도(Tiles Per Second)여야 
+# 아이솔레이션 맵에서 정상 속도로 움직입니다.
 SPEED_WALK = 4.5
 SPEED_RUN = 6.0
 SPEED_CROUCH = 2.0

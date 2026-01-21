@@ -4,13 +4,13 @@ from game.scripts.entity import GameEntity
 from settings import TILE_SIZE
 
 class NpcEntity(GameEntity):
-    def __init__(self, name="Citizen", skin_color=None, clothes_color=None, role="CITIZEN"):
+    def __init__(self, name="Citizen", skin_color=None, clothes_color=None, role="CITIZEN", client_id=None): # client_id 추가
         if skin_color is None:
             skin_color = (random.randint(200, 255), random.randint(180, 230), random.randint(150, 200))
         if clothes_color is None:
             clothes_color = (random.randint(50, 200), random.randint(50, 200), random.randint(50, 200))
             
-        super().__init__(name, skin_color, clothes_color, role=role)
+        super().__init__(name, skin_color, clothes_color, client_id=client_id, role=role) # client_id 전달
         
         self.move_timer = 0
         self.wait_time = random.uniform(1.0, 3.0)

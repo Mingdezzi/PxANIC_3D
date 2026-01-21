@@ -15,6 +15,8 @@ class StatusComponent(Component):
         self.emotions = {}
         self.shiver_offset = [0, 0]
         self.is_dead = False
+        self.is_frozen = False # 추가: 동결 상태 여부
+        self.frozen_timer = 0.0 # 추가: 동결 해제까지 남은 시간
         self.node = None
 
     def _on_added(self, node):

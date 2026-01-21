@@ -54,6 +54,15 @@ class TimeManager:
         self.target_ambient = new_phase['ambient']
         print(f"[Time] Phase Changed: {self.current_phase}")
 
+    def sync_time(self, phase_idx, timer, day):
+        self.current_phase_idx = phase_idx
+        self.phase_timer = timer
+        self.day_count = day
+        # Ambient color should also be synced or smoothly transitioned
+        self.current_ambient = self.PHASES[self.current_phase]['ambient']
+        self.target_ambient = self.current_ambient # Instantly sync ambient color
+        self.last_tick = time.time() # Reset last_tick to prevent large dt next update
+
     def _lerp_ambient(self, dt):
         # Smooth transition speed
         speed = 0.5 * dt

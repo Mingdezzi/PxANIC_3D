@@ -3,6 +3,7 @@ import os
 from engine.graphics.block import Block3D
 from engine.graphics.lighting import LightSource
 from engine.assets.tile_engine import TileEngine # Import TileEngine
+from settings import TILE_SIZE # TILE_SIZE 임포트
 
 class MapLoader:
     def __init__(self, map_path, tiles_path):
@@ -10,6 +11,7 @@ class MapLoader:
         self.tile_data = self._load_json(tiles_path)
         self.width = self.map_data.get("width", 100)
         self.height = self.map_data.get("height", 100)
+        self.zone_map = self.map_data.get('zone_map', [[0 for _ in range(self.width)] for _ in range(self.height)]) # PxANIC!의 zone_map 이식
 
     def _load_json(self, path):
         with open(path, 'r', encoding='utf-8') as f:
@@ -89,4 +91,13 @@ class MapLoader:
                 if "Lamp" in name or "Light" in name:
                     light = LightSource(f"Light_{x}_{y}", radius=150, color=(255, 255, 200), intensity=0.4)
                     block.add_child(light)
+
+    def get_zone_id(self, gx, gy):
+        """
+        주어진 그리드 좌표 (gx, gy)에 해당하는 zone_id를 반환합니다.
+        범위를 벗어나면 기본값 0을 반환합니다.
+        """
+        if 0 <= gy < self.height and 0 <= gx < self.width:
+            return self.zone_map[gy][gx]
+        return 0
 

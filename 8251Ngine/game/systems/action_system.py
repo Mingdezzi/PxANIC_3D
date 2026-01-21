@@ -1,6 +1,7 @@
 import random
 from engine.core.math_utils import IsoMath
 from engine.assets.tile_engine import TileEngine
+from settings import VENDING_MACHINE_TID # VENDING_MACHINE_TID 임포트
 
 class ActionSystem:
     def __init__(self, scene):
@@ -211,6 +212,11 @@ class ActionSystem:
             
         elif tid == self.CHEST_OPEN:
             return "Already Empty"
+            
+        # --- Vending Machine ---
+        elif tid == VENDING_MACHINE_TID:
+            self.scene.toggle_vending_machine()
+            return "Vending machine opened."
 
         return f"Interacted with {tid}"
 

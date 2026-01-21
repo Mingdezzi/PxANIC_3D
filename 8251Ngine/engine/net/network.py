@@ -95,5 +95,16 @@ class NetworkManager:
                 break
         return messages
 
+    def send_move(self, x, y, is_moving, facing_dir, ent_id=None):
+        msg = {
+            "type": "MOVE",
+            "id": ent_id if ent_id else self.client_id,
+            "x": x,
+            "y": y,
+            "is_moving": is_moving,
+            "facing": [int(facing_dir.x), int(facing_dir.y)]
+        }
+        self.send(msg)
+
     def stop(self):
         self.running = False

@@ -135,6 +135,7 @@ class InventoryComponent(Component):
             return True # Not consumed here, ActionSystem will remove it
         elif item_key == 'MASTER_KEY':
             # Master Key also used via ActionSystem. Has limited uses.
+            # PxANIC! original has a separate counter (player.powerbank_uses or player.master_key_uses)
             if p.buff_timers.get('MASTER_KEY_USES', 0) < 3: # Max 3 uses for master key
                 p.buff_timers['MASTER_KEY_USES'] = p.buff_timers.get('MASTER_KEY_USES', 0) + 1
                 services["popups"].add_popup(f"만능키 사용 준비 ({3 - p.buff_timers['MASTER_KEY_USES']}회 남음)", p.position.x, p.position.y, 0.5)
@@ -143,7 +144,43 @@ class InventoryComponent(Component):
                 services["popups"].add_popup("만능키 사용 횟수 초과!", p.position.x, p.position.y, 0.5, (255, 50, 50))
                 return False
 
-        # Add other item logics as needed (SMOKE_BOMB, ARMOR, POTION, TASER, TRAP)
+        elif item_key == 'SMOKE_BOMB':
+            # Original PxANIC!: InteractionManager.emit_smoke
+            services["interaction"].emit_smoke(p.position.x, p.position.y, 200, 5.0) # radius 200px, 5s duration
+            used = True; popup_msg = "연막탄 사용!"
+        elif item_key == 'ARMOR':
+            # Original PxANIC!: Blocks 1 attack. Buff is set.
+            if not p.buffs.get('ARMOR', False):
+                p.buffs['ARMOR'] = True
+                used = True; popup_msg = "방탄복 착용! (1회 방어)"
+            else:
+                services["popups"].add_popup("이미 착용 중!", p.position.x, p.position.y, 0.5)
+                return False
+        elif item_key == 'POTION':
+            # Original PxANIC!: Revive next morning
+            if not p.alive and p.hp <= 0: # Only if dead
+                p.buffs['REVIVE_NEXT_MORNING'] = True
+                used = True; popup_msg = "소생약 사용! (다음 날 아침 부활)"
+            else:
+                services["popups"].add_popup("죽지 않았습니다.", p.position.x, p.position.y, 0.5)
+                return False
+        elif item_key == 'TASER':
+            # Original PxANIC!: Stun enemy for 3s (1 use). This is done in do_attack.
+            # If used from inventory, it prepares the taser as a buff.
+            # For simplicity, we'll make it a temporary buff that enables a special attack.
+            if not p.buffs.get('TASER_READY', False):
+                p.buffs['TASER_READY'] = True
+                p.buff_timers['TASER_READY'] = 30.0 # Ready for 30s, or 1 use
+                used = True; popup_msg = "테이저건 장전!"
+            else:
+                services["popups"].add_popup("이미 장전됨!", p.position.x, p.position.y, 0.5)
+                return False
+        elif item_key == 'TRAP':
+            # Original PxANIC!: Place trap. Requires TrapSystem.
+            # Temporarily, just indicate placement. Actual trap system needed.
+            services["popups"].add_popup("함정 설치 (미구현)", p.position.x, p.position.y, 1.0, (255, 150, 50))
+            # TrapSystem.place_trap(p.position.x, p.position.y, player_id=p.client_id) 
+            used = True; popup_msg = "함정 설치!"
 
         if used:
             self.remove_item(item_key, 1)
@@ -152,14 +189,20 @@ class InventoryComponent(Component):
         return False
 
     def buy_item(self, item_key, services):
-        # p = self.node
-        # if p.role == "SPECTATOR": return
-        # if item_key in self._item_data:
-        #     price = self._item_data[item_key]['price']
-        #     if self.coins >= price: 
-        #         self.coins -= price; self.add_item(item_key, 1)
-        #         services["popups"].add_popup(f"{self._item_data[item_key]['name']} 구매! (-{price} 코인)", p.position.x, p.position.y, 1.0)
-        #     else: 
-        #         services["popups"].add_popup("코인 부족!", p.position.x, p.position.y, 1.0)
-        # Currently, buying is not hooked up, so just return None
-        return None
+        p = self.node
+        if p.status.role == "SPECTATOR": return "Spectators cannot buy." # 관전자 구매 불가
+        
+        item_info = self.get_item_info(item_key)
+        if not item_info:
+            return "Item not found."
+        
+        price = item_info.get('price', 0)
+        if self.coins < price:
+            services["popups"].add_popup("코인 부족!", p.position.x, p.position.y, 1.0, (255, 50, 50))
+            return "Not enough coins."
+            
+        self.coins -= price
+        self.add_item(item_key, 1) # 1개 구매
+        
+        services["popups"].add_popup(f"{item_info['name']} 구매! (-{price} 코인)", p.position.x, p.position.y, 1.0, (100, 255, 100))
+        return f"Purchased {item_info['name']} for {price} coins."

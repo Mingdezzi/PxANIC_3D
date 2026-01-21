@@ -15,6 +15,7 @@ class GameEntity(AnimatedSprite):
         self.client_id = client_id
         self.is_moving = False
         self.facing_direction = pygame.math.Vector2(0, 1) # 초기 방향 (아래)
+        self.scale = 1.0 # 캐릭터 크기를 1.0으로 다시 설정 (내부에서 2배로 그림)
         
         # --- Components ---
         self.status = self.add_component(StatusComponent(role=role)) # Pass role to StatusComponent
@@ -51,10 +52,59 @@ class GameEntity(AnimatedSprite):
         self.shiver_timer = 0.0 # For cold/fear effects
         
         self.buff_timers = {} # {buff_key: remaining_time}
+        self.is_hiding = False # PxANIC! hiding state
+        self.is_stunned = False # Stunned state
+        self.stun_timer = 0.0
+        self.bullets_fired_today = 0
+        self.ability_used = False
+        self.vote_count = 0 # 투표 수
+
+        self.map_manager = None # Set by PlayScene
+        self.zone_map = None    # Set by PlayScene
         
         self._setup_procedural_animations()
 
+    def add_popup(self, msg, x_pos, y_pos, duration=1.0, color=(255, 255, 255)):
+        # Wrapper for services["popups"].add_popup
+        if self.services.get("popups"): # Ensure services is available
+            self.services["popups"].add_popup(msg, x_pos, y_pos, duration, color)
+
+    def take_damage(self, amount, services):
+        if self.buffs.get('ARMOR', False): # ARMOR buff in PxANIC! blocks one attack
+            del self.buffs['ARMOR']
+            # ARMOR_USES could be implemented if multiple hits are blocked per armor
+            self.add_popup("공격 방어! (방탄복 소모)", self.position.x, self.position.y, 1.0, (100, 255, 100))
+            return 0 # No damage taken
+            
+        self.hp = max(0, self.hp - amount)
+        if self.hp <= 0: self.alive = False
+        self.add_popup(f"피해! (-{amount})", self.position.x, self.position.y, 1.0, (255, 50, 50))
+        return amount
+
+    def take_stun(self, duration, services):
+        self.is_stunned = True
+        self.stun_timer = duration / 1000.0 # Convert ms to seconds
+        self.add_popup("기절!", self.position.x, self.position.y, 1.0, (255, 255, 0))
+
     def update_status_and_movement(self, dt, services):
+        # Handle stun state first
+        if self.is_stunned:
+            self.stun_timer -= dt
+            if self.stun_timer <= 0:
+                self.is_stunned = False
+                self.add_popup("기절 해제", self.position.x, self.position.y, 0.5, (100, 255, 100))
+            self.is_moving = False # Can't move while stunned
+            return # Skip other updates if stunned
+
+        # Handle frozen state
+        if self.status.is_frozen:
+            self.status.frozen_timer -= dt * 1000 # PlayScene에서는 pygame.time.get_ticks()를 사용했으므로 dt는 초 단위, frozen_timer는 ms 단위
+            if self.status.frozen_timer <= 0:
+                self.status.is_frozen = False
+                self.add_popup("동결 해제", self.position.x, self.position.y, 0.5, (100, 255, 100))
+            self.is_moving = False # Can't move while frozen
+            return # Skip other updates if frozen
+
         # Import settings here to avoid circular dependency on first load
         from settings import SPEED_RUN, SPEED_WALK, SPEED_CROUCH
         
@@ -121,19 +171,23 @@ class GameEntity(AnimatedSprite):
         self.status.role = self.role # Update StatusComponent's role
         self._setup_procedural_animations() # Refresh visuals
 
+    def set_group(self, group):
+        self.team = group
+        print(f"[Entity] Group Set: {self.team}")
+
     def _setup_procedural_animations(self):
         from engine.graphics.animation import Animation
         from settings import TILE_SIZE # TILE_SIZE from settings.py
         
         # PxANIC! CharacterRenderer definitions for 2D style
-        RECT_BODY = pygame.Rect(4, 4, 24, 24)
-        RECT_CLOTH = pygame.Rect(4, 14, 24, 14)
+        RECT_BODY = pygame.Rect(8, 8, 48, 48)
+        RECT_CLOTH = pygame.Rect(8, 28, 48, 28)
 
         def create_frame(height_mod, tilt): # tilt is ignored for 2D style
             skin_color = self.custom.skin_color
             clothes_color = self.custom.clothes_color
             
-            base_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            base_surf = pygame.Surface((TILE_SIZE * 2, TILE_SIZE * 2), pygame.SRCALPHA)
             
             # Body (Skin color, rounded rect)
             pygame.draw.rect(base_surf, skin_color, RECT_BODY, border_radius=6)
@@ -154,10 +208,10 @@ class GameEntity(AnimatedSprite):
             # Eyes (based on facing_direction)
             f_dir = self.facing_direction
             ox, oy = int(f_dir.x * 3), int(f_dir.y * 2) # PxANIC! style eye offset
-            pygame.draw.circle(base_surf, (255, 255, 255), (16 - 5 + ox, 12 + oy), 3) # Left eye white
-            pygame.draw.circle(base_surf, (0, 0, 0), (16 - 5 + ox + int(f_dir.x), 12 + oy + int(f_dir.y)), 1) # Left pupil
-            pygame.draw.circle(base_surf, (255, 255, 255), (16 + 5 + ox, 12 + oy), 3) # Right eye white
-            pygame.draw.circle(base_surf, (0, 0, 0), (16 + 5 + ox + int(f_dir.x), 12 + oy + int(f_dir.y)), 1) # Right pupil
+            pygame.draw.circle(base_surf, (255, 255, 255), (32 - 10 + ox * 2, 24 + oy * 2), 6) # Left eye white
+            pygame.draw.circle(base_surf, (0, 0, 0), (32 - 10 + ox * 2 + int(f_dir.x * 2), 24 + oy * 2 + int(f_dir.y * 2)), 2) # Left pupil
+            pygame.draw.circle(base_surf, (255, 255, 255), (32 + 10 + ox * 2, 24 + oy * 2), 6) # Right eye white
+            pygame.draw.circle(base_surf, (0, 0, 0), (32 + 10 + ox * 2 + int(f_dir.x * 2), 24 + oy * 2 + int(f_dir.y * 2)), 2) # Right pupil
             
             return base_surf
 
@@ -208,10 +262,34 @@ class GameEntity(AnimatedSprite):
             self.anim_player.speed_scale = 1.0
         
         super().update(dt, services, game_state) # Pass game_state to super().update
+    
+    def is_frozen(self):
+        return self.status.is_frozen
+
+    def morning_process(self, is_indoors):
+        # PxANIC!의 morning_process 로직을 GameEntity에 맞게 이식
+        # 예를 들어, AP 회복, 특정 버프 초기화 등
+        self.status.ap = min(self.status.max_ap, self.status.ap + 20) # AP 약간 회복
+        self.status.emotions['FEAR'] = 0 # 밤 동안의 공포 초기화
+        self.bullets_fired_today = 0 # 발사한 총알 수 초기화
+        self.ability_used = False # 능력 사용 여부 초기화
+
+        if is_indoors:
+            print(f"{self.name} woke up indoors.")
+        else:
+            print(f"{self.name} woke up outdoors.")
+        
+        # TODO: 기타 PxANIC!의 morning_process 로직 이식 (예: hunger/thirst 감소, 피로도 등)
     def set_network_pos(self, x, y):
         if self.target_pos is None:
             self.position.x, self.position.y = x, y
         self.target_pos = pygame.math.Vector2(x, y)
+
+    def set_network_state(self, x, y, is_moving, facing):
+        self.set_network_pos(x, y)
+        self.is_moving = is_moving
+        if isinstance(facing, (list, tuple)) and len(facing) == 2:
+            self.facing_direction = pygame.math.Vector2(facing[0], facing[1])
 
     def fire_weapon(self, direction, services):
         """총기 발사 로직"""
